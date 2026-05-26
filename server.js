@@ -8,7 +8,7 @@ const swaggerJsdoc = require('swagger-jsdoc');
 const authRouter = require('./routes/auth');
 const bankRouter = require('./routes/bank');
 
-const PORT = 5000;
+const PORT = process.env.PORT || 5000; // רנדר קובע את הפורט אוטומטית, אז אנחנו נותנים לו עדיפות
 
 const swaggerOptions = {
   definition: {
@@ -19,7 +19,12 @@ const swaggerOptions = {
     },
     servers: [
       {
+        url: 'https://bank-backend-frws.onrender.com', // הכתובת הרשמית שלך ברנדר עבור המרצים
+        description: 'Production Server (Render)'
+      },
+      {
         url: `http://localhost:${PORT}`,
+        description: 'Local Development Server'
       },
     ],
   },

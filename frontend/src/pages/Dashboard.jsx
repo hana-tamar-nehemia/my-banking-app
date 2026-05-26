@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:5000/api/bank';
+const API_BASE = 'https://bank-backend-frws.onrender.com/api/bank';
 
 const styles = {
   page: {

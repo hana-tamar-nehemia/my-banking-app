@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api/auth/login';
+const API_URL = 'https://bank-backend-frws.onrender.com/api/auth/login';
 
 const styles = {
   page: {
