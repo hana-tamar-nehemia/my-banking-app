@@ -1,7 +1,6 @@
 const crypto = require('crypto');
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
 const User = require('../models/User');
 
 const router = express.Router();
@@ -9,19 +8,35 @@ const router = express.Router();
 // Adjust this to your deployed frontend URL.
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://YOUR-VERCEL-URL.vercel.app';
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // STARTTLS on 587; more reliable on cloud hosts than 465
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  // Fail fast instead of hanging forever if the SMTP port is slow/blocked.
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 15000,
-});
+// Render's free tier blocks outbound SMTP ports, so we send email over HTTPS
+// using Brevo's transactional email API (https://developers.brevo.com/).
+// Required env vars: BREVO_API_KEY and EMAIL_USER (a Brevo-verified sender).
+async function sendEmail({ to, subject, html }) {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) {
+    throw new Error('BREVO_API_KEY is not configured');
+  }
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': apiKey,
+      'Content-Type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify({
+      sender: { name: 'Banking App', email: process.env.EMAIL_USER },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Brevo API error ${response.status}: ${detail}`);
+  }
+}
 
 function buildVerificationEmail(username, verificationUrl) {
   return `
@@ -90,8 +105,7 @@ async function issueVerificationEmail(user) {
 
   const verificationUrl = `${FRONTEND_URL}/verify?token=${user.verificationCode}`;
 
-  await transporter.sendMail({
-    from: `"Banking App" <${process.env.EMAIL_USER}>`,
+  await sendEmail({
     to: user.email,
     subject: 'Verify your Banking App account',
     html: buildVerificationEmail(user.username, verificationUrl),
