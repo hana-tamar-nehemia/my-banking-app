@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 
 const API_URL = 'https://bank-backend-frws.onrender.com/api/auth/verify';
+const RESEND_URL = 'https://bank-backend-frws.onrender.com/api/auth/resend-verification';
 
 const styles = {
   page: {
@@ -21,9 +22,10 @@ const styles = {
     borderRadius: '12px',
     boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
     padding: '2rem',
+    textAlign: 'center',
   },
   title: {
-    margin: '0 0 0.25rem',
+    margin: '0 0 0.5rem',
     fontSize: '1.75rem',
     fontWeight: 700,
     color: '#0f172a',
@@ -34,53 +36,19 @@ const styles = {
     color: '#64748b',
     lineHeight: 1.5,
   },
-  emailHint: {
-    margin: '0 0 1.25rem',
-    fontSize: '0.875rem',
-    color: '#475569',
-    background: '#f8fafc',
-    padding: '0.65rem 0.75rem',
-    borderRadius: '8px',
-    border: '1px solid #e2e8f0',
+  spinner: {
+    width: '40px',
+    height: '40px',
+    margin: '1rem auto',
+    border: '4px solid #e2e8f0',
+    borderTopColor: '#2563eb',
+    borderRadius: '50%',
+    animation: 'verify-spin 0.8s linear infinite',
   },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1.25rem',
-  },
-  field: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.4rem',
-  },
-  label: {
-    fontSize: '0.875rem',
-    fontWeight: 600,
-    color: '#334155',
-  },
-  input: {
-    padding: '0.65rem 0.75rem',
-    fontSize: '1.25rem',
-    letterSpacing: '0.35em',
-    textAlign: 'center',
-    border: '1px solid #cbd5e1',
-    borderRadius: '8px',
-    outline: 'none',
-  },
-  button: {
-    marginTop: '0.5rem',
-    padding: '0.75rem 1rem',
-    fontSize: '1rem',
-    fontWeight: 600,
-    color: '#fff',
-    background: '#2563eb',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-    cursor: 'not-allowed',
+  success: {
+    fontSize: '2.5rem',
+    lineHeight: 1,
+    margin: '0.5rem 0 1rem',
   },
   error: {
     padding: '0.75rem 1rem',
@@ -89,137 +57,250 @@ const styles = {
     background: '#fef2f2',
     border: '1px solid #fecaca',
     borderRadius: '8px',
-  },
-  warning: {
-    padding: '0.75rem 1rem',
-    fontSize: '0.875rem',
-    color: '#92400e',
-    background: '#fffbeb',
-    border: '1px solid #fde68a',
-    borderRadius: '8px',
     marginBottom: '1rem',
+  },
+  button: {
+    display: 'inline-block',
+    marginTop: '0.5rem',
+    padding: '0.75rem 1.5rem',
+    fontSize: '1rem',
+    fontWeight: 600,
+    color: '#fff',
+    background: '#2563eb',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    textDecoration: 'none',
   },
   link: {
     color: '#2563eb',
     fontWeight: 600,
     textDecoration: 'none',
   },
+  resendRow: {
+    marginTop: '1rem',
+    fontSize: '0.875rem',
+    color: '#64748b',
+  },
+  resendButton: {
+    marginTop: '0.75rem',
+    padding: '0.6rem 1.25rem',
+    fontSize: '0.95rem',
+    fontWeight: 600,
+    color: '#2563eb',
+    background: '#fff',
+    border: '1px solid #2563eb',
+    borderRadius: '8px',
+    cursor: 'pointer',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+    cursor: 'not-allowed',
+  },
+  notice: {
+    padding: '0.75rem 1rem',
+    fontSize: '0.875rem',
+    color: '#166534',
+    background: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: '8px',
+    marginBottom: '1rem',
+  },
+};
+
+const STATUS = {
+  VERIFYING: 'verifying',
+  SUCCESS: 'success',
+  ERROR: 'error',
+  MISSING: 'missing',
 };
 
 export default function Verify() {
   const navigate = useNavigate();
-  const email = localStorage.getItem('email');
-  const [passcode, setPasscode] = useState('');
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get('token');
+
+  const [status, setStatus] = useState(token ? STATUS.VERIFYING : STATUS.MISSING);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
+  const hasRun = useRef(false);
 
-  const handlePasscodeChange = (e) => {
-    const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 6);
-    setPasscode(digitsOnly);
-  };
+  const email = localStorage.getItem('email');
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleResend = async () => {
+    setResendMessage('');
     setError('');
-    setLoading(true);
 
+    if (!email) {
+      setError('We could not find your email. Please sign up again.');
+      return;
+    }
+
+    setResending(true);
     try {
-      const response = await axios.post(API_URL, {
-        email,
-        passcode,
-      });
-
-      if (response.status === 200 && response.data.user) {
-        const { user } = response.data;
-
-        localStorage.removeItem('email');
-        localStorage.setItem(
-          'user',
-          JSON.stringify({
-            _id: String(user._id),
-            username: user.username,
-            email: user.email,
-            balance: user.balance,
-          })
-        );
-
-        navigate('/dashboard');
-      }
+      const response = await axios.post(RESEND_URL, { email });
+      setResendMessage(
+        response.data?.message || 'A new verification link has been sent.'
+      );
     } catch (err) {
       const message =
         err.response?.data?.error ||
         err.response?.data?.message ||
-        'Verification failed. Please try again.';
+        'Could not resend the link. Please try again later.';
       setError(message);
     } finally {
-      setLoading(false);
+      setResending(false);
     }
   };
 
-  if (!email) {
-    return (
-      <div style={styles.page}>
-        <div style={styles.card}>
-          <h1 style={styles.title}>Verify your account</h1>
-          <p style={styles.warning} role="alert">
-            No email found. Please sign up first to receive a verification code.
-          </p>
-          <Link to="/signup" style={styles.link}>
-            Go to Sign up
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!token || hasRun.current) {
+      return;
+    }
+    hasRun.current = true;
+
+    const verifyToken = async () => {
+      try {
+        const response = await axios.post(API_URL, { token });
+
+        if (response.status === 200 && response.data.user) {
+          const { user, token: authToken } = response.data;
+
+          if (authToken) {
+            localStorage.setItem('token', authToken);
+          }
+
+          localStorage.removeItem('email');
+          localStorage.setItem(
+            'user',
+            JSON.stringify({
+              _id: String(user._id),
+              username: user.username,
+              email: user.email,
+              balance: user.balance,
+            })
+          );
+
+          setStatus(STATUS.SUCCESS);
+          setTimeout(() => navigate('/dashboard'), 1500);
+        }
+      } catch (err) {
+        const message =
+          err.response?.data?.error ||
+          err.response?.data?.message ||
+          'Verification failed. The link may be invalid or expired.';
+        setError(message);
+        setStatus(STATUS.ERROR);
+      }
+    };
+
+    verifyToken();
+  }, [token, navigate]);
 
   return (
     <div style={styles.page}>
+      <style>{'@keyframes verify-spin { to { transform: rotate(360deg); } }'}</style>
       <div style={styles.card}>
-        <h1 style={styles.title}>Verify your account</h1>
-        <p style={styles.subtitle}>
-          Enter the 6-digit code we sent for your registration.
-        </p>
-
-        <p style={styles.emailHint}>
-          Verifying: <strong>{email}</strong>
-        </p>
-
-        {error && (
-          <div style={styles.error} role="alert">
-            {error}
-          </div>
+        {status === STATUS.MISSING && (
+          <>
+            <h1 style={styles.title}>Invalid link</h1>
+            <p style={styles.subtitle}>
+              This verification link is missing its token. Use the link from
+              your email, request a new one below, or sign up again.
+            </p>
+            {resendMessage && (
+              <div style={styles.notice} role="status">
+                {resendMessage}
+              </div>
+            )}
+            {error && (
+              <div style={styles.error} role="alert">
+                {error}
+              </div>
+            )}
+            {email && (
+              <div style={styles.resendRow}>
+                Didn&apos;t get an email for <strong>{email}</strong>?
+                <br />
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={resending}
+                  style={{
+                    ...styles.resendButton,
+                    ...(resending ? styles.buttonDisabled : {}),
+                  }}
+                >
+                  {resending ? 'Sending…' : 'Resend verification link'}
+                </button>
+              </div>
+            )}
+            <p style={styles.resendRow}>
+              <Link to="/signup" style={styles.link}>
+                Go to Sign up
+              </Link>
+            </p>
+          </>
         )}
 
-        <form style={styles.form} onSubmit={handleSubmit} noValidate>
-          <div style={styles.field}>
-            <label htmlFor="passcode" style={styles.label}>
-              6-digit passcode
-            </label>
-            <input
-              id="passcode"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              value={passcode}
-              onChange={handlePasscodeChange}
-              style={styles.input}
-              placeholder="000000"
-              maxLength={6}
-              required
-            />
-          </div>
+        {status === STATUS.VERIFYING && (
+          <>
+            <h1 style={styles.title}>Verifying your account</h1>
+            <div style={styles.spinner} aria-hidden="true" />
+            <p style={styles.subtitle}>
+              Hang tight while we confirm your magic link…
+            </p>
+          </>
+        )}
 
-          <button
-            type="submit"
-            style={{
-              ...styles.button,
-              ...(loading ? styles.buttonDisabled : {}),
-            }}
-            disabled={loading || passcode.length !== 6}
-          >
-            {loading ? 'Verifying…' : 'Verify Account'}
-          </button>
-        </form>
+        {status === STATUS.SUCCESS && (
+          <>
+            <div style={styles.success} aria-hidden="true">
+              ✓
+            </div>
+            <h1 style={styles.title}>Account verified!</h1>
+            <p style={styles.subtitle}>
+              You&apos;re all set. Redirecting you to your dashboard…
+            </p>
+          </>
+        )}
+
+        {status === STATUS.ERROR && (
+          <>
+            <h1 style={styles.title}>Verification failed</h1>
+            {resendMessage ? (
+              <div style={styles.notice} role="status">
+                {resendMessage}
+              </div>
+            ) : (
+              <div style={styles.error} role="alert">
+                {error}
+              </div>
+            )}
+            <p style={styles.subtitle}>
+              Your link may have expired. Links are valid for 15 minutes.
+            </p>
+            {email && (
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resending}
+                style={{
+                  ...styles.button,
+                  ...(resending ? styles.buttonDisabled : {}),
+                }}
+              >
+                {resending ? 'Sending…' : 'Resend verification link'}
+              </button>
+            )}
+            <p style={styles.resendRow}>
+              <Link to="/signup" style={styles.link}>
+                Or sign up again
+              </Link>
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

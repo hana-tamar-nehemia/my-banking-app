@@ -29,9 +29,16 @@ const userSchema = new mongoose.Schema(
     verificationCode: {
       type: String,
     },
+    verificationCodeExpires: {
+      type: Date,
+    },
   },
   { timestamps: true }
 );
+
+// TTL index: MongoDB auto-deletes a document once `verificationCodeExpires`
+// passes. Verified users have this field unset, so they are never purged.
+userSchema.index({ verificationCodeExpires: 1 }, { expireAfterSeconds: 0 });
 
 userSchema.pre('save', async function hashPassword(next) {
   if (!this.isModified('password')) {
