@@ -252,7 +252,6 @@ export default function Dashboard() {
       const response = await axios.post(
         `${API_BASE}/transaction`,
         {
-          senderId: userId,
           receiverEmail: receiverEmail.trim().toLowerCase(),
           amount: numericAmount,
         },

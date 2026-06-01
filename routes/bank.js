@@ -68,7 +68,7 @@ router.get('/dashboard/:userId', protect, async (req, res) => {
  * @swagger
  * /api/bank/transaction:
  * post:
- * summary: Transfer funds between users (Protected via JWT)
+ * summary: Transfer funds from the authenticated user (sender derived from JWT)
  * tags: [Bank]
  * requestBody:
  * required: true
@@ -77,7 +77,6 @@ router.get('/dashboard/:userId', protect, async (req, res) => {
  * schema:
  * type: object
  * required:
- * - senderId
  * - receiverEmail
  * - amount
  * responses:
@@ -85,8 +84,6 @@ router.get('/dashboard/:userId', protect, async (req, res) => {
  * description: Transaction completed successfully
  * 401:
  * description: Not authorized
- * 403:
- * description: Forbidden, attempting to send money from someone else's account
  * 400:
  * description: Insufficient balance
  * 404:
@@ -94,13 +91,10 @@ router.get('/dashboard/:userId', protect, async (req, res) => {
  */
 router.post('/transaction', protect, async (req, res) => {
   try {
-    const { senderId, receiverEmail, amount } = req.body;
+    const { receiverEmail, amount } = req.body;
+    const fromId = req.user.id;
 
-    if (senderId !== req.userId) {
-      return res.status(403).json({ error: 'Forbidden: Cannot send money from another account' });
-    }
-
-    const sender = await User.findById(senderId);
+    const sender = await User.findById(fromId);
     if (!sender) {
       return res.status(404).json({ error: 'Sender not found' });
     }
