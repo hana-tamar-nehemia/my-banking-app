@@ -10,11 +10,17 @@ const router = express.Router();
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://YOUR-VERCEL-URL.vercel.app';
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // STARTTLS on 587; more reliable on cloud hosts than 465
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  // Fail fast instead of hanging forever if the SMTP port is slow/blocked.
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 15000,
 });
 
 function buildVerificationEmail(username, verificationUrl) {

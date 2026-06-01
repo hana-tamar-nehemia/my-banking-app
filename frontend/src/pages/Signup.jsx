@@ -95,11 +95,11 @@ export default function Signup() {
     setLoading(true);
 
     try {
-      const response = await axios.post(API_URL, {
-        username,
-        email,
-        password,
-      });
+      const response = await axios.post(
+        API_URL,
+        { username, email, password },
+        { timeout: 25000 }
+      );
 
       if (response.status === 201) {
         localStorage.setItem('email', email.trim().toLowerCase());
