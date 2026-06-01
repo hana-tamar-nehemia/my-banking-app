@@ -208,6 +208,7 @@ export default function Dashboard() {
         setUsername(response.data.username);
         setEmail(response.data.email);
         setBalance(response.data.balance);
+        setRecentTransactions(response.data.transactions || []);
 
         localStorage.setItem(
           'user',
@@ -405,7 +406,7 @@ export default function Dashboard() {
         <section style={styles.card}>
           <h2 style={styles.cardTitle}>Recent transactions</h2>
           {recentTransactions.length === 0 ? (
-            <p style={styles.empty}>No transactions yet this session.</p>
+            <p style={styles.empty}>No transactions yet.</p>
           ) : (
             <ul style={styles.transactionList}>
               {recentTransactions.map((tx) => (

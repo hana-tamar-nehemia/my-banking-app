@@ -50,10 +50,17 @@ router.get('/dashboard/:userId', protect, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    const transactions = await Transaction.find({
+      $or: [{ sender: user._id }, { receiver: user._id }],
+    })
+      .sort({ createdAt: -1 })
+      .limit(50);
+
     res.status(200).json({
       username: user.username,
       email: user.email,
       balance: user.balance,
+      transactions: transactions.map(formatTransaction),
     });
   } catch (err) {
     if (err.name === 'CastError') {
