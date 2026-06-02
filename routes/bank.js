@@ -1,6 +1,7 @@
 const express = require('express');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
+const Notification = require('../models/Notification');
 const protect = require('../middleware/authMiddleware');
 
 const router = express.Router();
@@ -129,6 +130,29 @@ router.post('/transaction', protect, async (req, res) => {
       amount,
     });
     await transaction.save();
+
+    // Persist a notification for the receiver so it survives across logins/devices.
+    const notification = await Notification.create({
+      user: receiver._id,
+      type: 'transfer:received',
+      message: `You received $${amount.toFixed(2)} from ${sender.email}`,
+      senderEmail: sender.email,
+      amount,
+    });
+
+    // Push it in real time if the receiver is currently connected.
+    const io = req.app.get('io');
+    if (io) {
+      io.to(receiver._id.toString()).emit('transfer:received', {
+        id: notification._id.toString(),
+        type: notification.type,
+        message: notification.message,
+        senderEmail: notification.senderEmail,
+        amount: notification.amount,
+        read: notification.read,
+        timestamp: notification.createdAt.toISOString(),
+      });
+    }
 
     res.status(200).json({
       message: 'Transaction successful',

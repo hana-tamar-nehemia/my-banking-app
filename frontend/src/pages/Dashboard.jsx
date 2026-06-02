@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import NotificationCenter from '../components/NotificationCenter';
 
 const API_BASE = 'https://bank-backend-frws.onrender.com/api/bank';
 
@@ -173,6 +174,7 @@ function getStoredUser() {
 export default function Dashboard() {
   const navigate = useNavigate();
   const [userId, setUserId] = useState(null);
+  const [token, setToken] = useState(null);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [balance, setBalance] = useState(null);
@@ -184,56 +186,59 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [transferring, setTransferring] = useState(false);
 
+  // Reusable fetch so we can refresh on mount and whenever a live notification arrives.
+  const refreshDashboard = useCallback(async () => {
+    const storedUser = getStoredUser();
+    const storedToken = localStorage.getItem('token');
+    if (!storedUser?._id || !storedToken) return;
+
+    try {
+      const response = await axios.get(
+        `${API_BASE}/dashboard/${storedUser._id}`,
+        {
+          headers: { Authorization: `Bearer ${storedToken}` } // הזרקת ה-JWT החתום
+        }
+      );
+      setUsername(response.data.username);
+      setEmail(response.data.email);
+      setBalance(response.data.balance);
+      setRecentTransactions(response.data.transactions || []);
+
+      localStorage.setItem(
+        'user',
+        JSON.stringify({
+          ...storedUser,
+          username: response.data.username,
+          email: response.data.email,
+          balance: response.data.balance,
+        })
+      );
+    } catch (err) {
+      const message = err.response?.data?.error || 'Failed to load dashboard.';
+      setError(message);
+      if (err.response?.status === 401 || err.response?.status === 403 || err.response?.status === 404) {
+        localStorage.clear();
+        navigate('/login');
+      }
+    }
+  }, [navigate]);
+
   useEffect(() => {
     const storedUser = getStoredUser();
-    const token = localStorage.getItem('token');
+    const storedToken = localStorage.getItem('token');
 
     // אם חסר יוזר או טוקן בזיכרון, זורקים ישירות למסך התחברות
-    if (!storedUser?._id || !token) {
+    if (!storedUser?._id || !storedToken) {
       localStorage.clear();
       navigate('/login');
       return;
     }
 
     setUserId(storedUser._id);
+    setToken(storedToken);
 
-    const fetchDashboard = async () => {
-      try {
-        const response = await axios.get(
-          `${API_BASE}/dashboard/${storedUser._id}`,
-          {
-            headers: { Authorization: `Bearer ${token}` } // הזרקת ה-JWT החתום
-          }
-        );
-        setUsername(response.data.username);
-        setEmail(response.data.email);
-        setBalance(response.data.balance);
-        setRecentTransactions(response.data.transactions || []);
-
-        localStorage.setItem(
-          'user',
-          JSON.stringify({
-            ...storedUser,
-            username: response.data.username,
-            email: response.data.email,
-            balance: response.data.balance,
-          })
-        );
-      } catch (err) {
-        const message =
-          err.response?.data?.error || 'Failed to load dashboard.';
-        setError(message);
-        if (err.response?.status === 401 || err.response?.status === 403 || err.response?.status === 404) {
-          localStorage.clear();
-          navigate('/login');
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDashboard();
-  }, [navigate]);
+    refreshDashboard().finally(() => setLoading(false));
+  }, [navigate, refreshDashboard]);
 
   const handleSignOut = () => {
     localStorage.clear();
@@ -327,9 +332,12 @@ export default function Dashboard() {
     <div style={styles.page}>
       <header style={styles.header}>
         <h1 style={styles.title}>Dashboard</h1>
-        <button type="button" style={styles.signOut} onClick={handleSignOut}>
-          Sign Out
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <NotificationCenter token={token} onNewNotification={refreshDashboard} />
+          <button type="button" style={styles.signOut} onClick={handleSignOut}>
+            Sign Out
+          </button>
+        </div>
       </header>
 
       <main style={styles.container}>
