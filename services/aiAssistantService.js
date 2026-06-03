@@ -157,7 +157,7 @@ async function runBankingAssistant({ userId, message, history = [], io = null })
   const { tools, wasTransferCompleted } = buildTools(userId, io, { tool, z });
 
   const llm = new ChatGoogleGenerativeAI({
-    model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+    model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
     temperature: 0,
     apiKey: process.env.GOOGLE_API_KEY,
   });
