@@ -141,7 +141,8 @@ export default function Landing() {
           )}
         </header>
 
-        <div className="landing-grid">
+        <div className="landing-page__main">
+          <div className="landing-grid">
           <section className="landing-hero" aria-label="Marketing">
             <h1 className="landing-hero__title">
               Get a card you can control with transparency
@@ -149,33 +150,6 @@ export default function Landing() {
             <p className="landing-hero__subtitle">
               Open an account in a few clicks. No need to deposit any money now.
             </p>
-            {view === VIEWS.HERO && (
-              <div className="landing-hero__actions">
-                <button
-                  type="button"
-                  className="btn-primary landing-hero__cta"
-                  onClick={() => {
-                    resetError();
-                    setView(VIEWS.REGISTER);
-                  }}
-                >
-                  Open account with us
-                </button>
-                <p className="landing-hero__footer">
-                  Already have an account?{' '}
-                  <button
-                    type="button"
-                    className="btn-text"
-                    onClick={() => {
-                      resetError();
-                      setView(VIEWS.LOGIN);
-                    }}
-                  >
-                    Login
-                  </button>
-                </p>
-              </div>
-            )}
           </section>
 
           <section className="landing-panel" aria-label="Account access">
@@ -272,7 +246,7 @@ export default function Landing() {
                 <>
                   <h2 className="auth-form__title">Create New Account</h2>
                   <p className="auth-form__subtitle">
-                    Join vibe.bank// in minutes
+                    Join Blink Bank in minutes
                   </p>
                   {error && (
                     <div className="alert-error" role="alert">
@@ -338,6 +312,7 @@ export default function Landing() {
               )}
             </div>
           </section>
+          </div>
         </div>
       </div>
     </div>

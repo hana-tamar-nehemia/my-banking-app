@@ -1,38 +1,44 @@
-export function BankIcon({ size = 28, className = '' }) {
+export function BBMark({ size = 32 }) {
+  const radius = Math.round(size * 0.28);
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 32 32"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
+    <div
       aria-hidden="true"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        background: 'var(--text-primary)',
+        color: '#fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 800,
+        fontSize: Math.round(size * 0.36),
+        letterSpacing: '-0.06em',
+        flexShrink: 0,
+        lineHeight: 1,
+      }}
     >
-      <rect x="4" y="14" width="24" height="14" rx="3" fill="currentColor" opacity="0.9" />
-      <path
-        d="M6 14L16 6L26 14"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <rect x="14" y="18" width="4" height="10" rx="1" fill="#e2f0eb" />
-    </svg>
+      BB
+    </div>
   );
 }
 
-export function BankWatermark({ size = 200 }) {
+export function BankWatermark() {
   return (
-    <div className="auth-page__watermark" aria-hidden="true">
-      <BankIcon size={size} />
+    <div className="auth-page__watermark auth-page__watermark--bb" aria-hidden="true">
+      BB
     </div>
   );
 }
 
 export default function BankLogo({ compact = false, hero = false }) {
-  const iconSize = hero ? 52 : compact ? 22 : 32;
-  const fontSize = hero ? 'clamp(2rem, 5vw, 2.75rem)' : compact ? '0.95rem' : '1.2rem';
+  const markSize = hero ? 56 : compact ? 36 : 40;
+  const nameSize = hero
+    ? 'clamp(1.75rem, 4vw, 2.5rem)'
+    : compact
+      ? '0.95rem'
+      : '1.15rem';
 
   return (
     <div
@@ -40,20 +46,21 @@ export default function BankLogo({ compact = false, hero = false }) {
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: hero ? '0.75rem' : '0.5rem',
+        gap: hero ? '0.85rem' : '0.55rem',
         color: 'var(--text-primary)',
       }}
+      aria-label="Blink Bank"
     >
-      <BankIcon size={iconSize} />
+      <BBMark size={markSize} />
       <span
         style={{
-          fontSize,
+          fontSize: nameSize,
           fontWeight: 800,
           letterSpacing: '-0.03em',
           lineHeight: 1.1,
         }}
       >
-        vibe.bank//
+        Blink Bank
       </span>
     </div>
   );
