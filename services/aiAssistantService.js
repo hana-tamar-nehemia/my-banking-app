@@ -130,6 +130,28 @@ function buildTools(userId, io, { tool, z }) {
   };
 }
 
+function formatAssistantError(err) {
+  const msg = err?.message || String(err);
+  if (msg.includes('429') || msg.includes('quota') || msg.includes('Too Many Requests')) {
+    return {
+      status: 429,
+      message:
+        'מכסת Gemini החינמית נגמרה זמנית. המתיני כדקה ונסי שוב, או הגדירי GEMINI_MODEL=gemini-2.5-flash-lite ב-Render/.env. אפשר גם לבדוק מכסה ב-Google AI Studio.',
+    };
+  }
+  if (msg.includes('404') && msg.includes('models/')) {
+    return {
+      status: 503,
+      message:
+        'מודל Gemini לא זמין. עדכני GEMINI_MODEL ל-gemini-2.5-flash-lite או gemini-2.0-flash.',
+    };
+  }
+  if (msg.includes('GOOGLE_API_KEY')) {
+    return { status: 503, message: msg };
+  }
+  return { status: 500, message: 'העוזר לא זמין כרגע. נסי שוב בעוד רגע.' };
+}
+
 /**
  * Run the LangGraph ReAct agent for one user message.
  * @param {{ userId: string, message: string, history?: Array, io?: object }} params
@@ -157,7 +179,7 @@ async function runBankingAssistant({ userId, message, history = [], io = null })
   const { tools, wasTransferCompleted } = buildTools(userId, io, { tool, z });
 
   const llm = new ChatGoogleGenerativeAI({
-    model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite',
     temperature: 0,
     apiKey: process.env.GOOGLE_API_KEY,
   });
@@ -169,14 +191,19 @@ async function runBankingAssistant({ userId, message, history = [], io = null })
 
   const messages = [
     new SystemMessage(SYSTEM_PROMPT),
-    ...historyToMessages(history, { HumanMessage, AIMessage }),
+    ...historyToMessages(history, { HumanMessage, AIMessage }).slice(-10),
     new HumanMessage(trimmedMessage),
   ];
 
-  const result = await agent.invoke(
-    { messages },
-    { recursionLimit: 12 }
-  );
+  let result;
+  try {
+    result = await agent.invoke({ messages }, { recursionLimit: 12 });
+  } catch (err) {
+    const formatted = formatAssistantError(err);
+    const error = new Error(formatted.message);
+    error.status = formatted.status;
+    throw error;
+  }
 
   const lastMessage = result.messages[result.messages.length - 1];
   const reply =

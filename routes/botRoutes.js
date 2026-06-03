@@ -58,7 +58,7 @@ router.post('/chat', protect, async (req, res) => {
     });
   } catch (err) {
     console.error('Bot chat error:', err);
-    const status = err.message?.includes('GOOGLE_API_KEY') ? 503 : 500;
+    const status = err.status || (err.message?.includes('GOOGLE_API_KEY') ? 503 : 500);
     res.status(status).json({
       error: err.message || 'Assistant unavailable. Please try again.',
     });
