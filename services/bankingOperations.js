@@ -2,13 +2,39 @@ const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const Notification = require('../models/Notification');
 
+function idOf(ref) {
+  if (!ref) return '';
+  if (ref._id) return ref._id.toString();
+  return ref.toString();
+}
+
 function formatTransaction(transaction) {
   return {
     id: transaction._id.toString(),
-    senderId: transaction.sender.toString(),
-    receiverId: transaction.receiver.toString(),
+    senderId: idOf(transaction.sender),
+    receiverId: idOf(transaction.receiver),
     amount: transaction.amount,
     timestamp: transaction.createdAt.toISOString(),
+  };
+}
+
+/** Human-readable fields for dashboard / AI (requires populated sender & receiver). */
+function formatTransactionWithParties(transaction, viewerUserId) {
+  const base = formatTransaction(transaction);
+  const viewerId = viewerUserId.toString();
+  const isSender = base.senderId === viewerId;
+  const counterparty = isSender ? transaction.receiver : transaction.sender;
+
+  return {
+    ...base,
+    type: isSender ? 'sent' : 'received',
+    counterpartyEmail: counterparty?.email ?? null,
+    counterpartyUsername: counterparty?.username ?? null,
+    senderEmail: transaction.sender?.email ?? null,
+    receiverEmail: transaction.receiver?.email ?? null,
+    summary: isSender
+      ? `Sent $${base.amount.toFixed(2)} to ${counterparty?.email ?? 'unknown'}`
+      : `Received $${base.amount.toFixed(2)} from ${counterparty?.email ?? 'unknown'}`,
   };
 }
 
@@ -24,13 +50,18 @@ async function getUserBalance(userId) {
   };
 }
 
-async function getRecentTransactions(userId, limit = 10) {
+async function getRecentTransactions(userId, limit = 10, { withParties = false } = {}) {
   const transactions = await Transaction.find({
     $or: [{ sender: userId }, { receiver: userId }],
   })
     .sort({ createdAt: -1 })
-    .limit(limit);
+    .limit(limit)
+    .populate('sender', 'email username')
+    .populate('receiver', 'email username');
 
+  if (withParties) {
+    return transactions.map((tx) => formatTransactionWithParties(tx, userId));
+  }
   return transactions.map(formatTransaction);
 }
 
@@ -103,6 +134,7 @@ async function transferMoney(fromUserId, receiverEmail, amount, io = null) {
 
 module.exports = {
   formatTransaction,
+  formatTransactionWithParties,
   getUserBalance,
   getRecentTransactions,
   transferMoney,

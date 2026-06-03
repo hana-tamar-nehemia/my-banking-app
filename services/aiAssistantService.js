@@ -12,6 +12,7 @@ SECURITY RULES (never break these):
 - NEVER claim you accessed another person's account.
 - If a tool returns an error, explain it clearly and do not fabricate success.
 - For money transfers, confirm the recipient email and amount with the user before calling transfer_money unless they already stated both clearly in the same request.
+- When describing transactions, always use counterpartyEmail, summary, and type (sent/received). Never show raw MongoDB user IDs to the customer.
 
 CAPABILITIES:
 - get_user_balance: current balance
@@ -80,7 +81,9 @@ function buildTools(userId, io, { tool, z }) {
 
   const getTransactions = tool(
     async () => {
-      const transactions = await getRecentTransactions(userId, 10);
+      const transactions = await getRecentTransactions(userId, 10, {
+        withParties: true,
+      });
       return JSON.stringify({ transactions });
     },
     {
