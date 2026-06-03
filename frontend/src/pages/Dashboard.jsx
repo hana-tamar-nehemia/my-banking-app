@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import NotificationCenter from '../components/NotificationCenter';
+import BankingBot from '../components/BankingBot';
 
 const API_BASE = 'https://bank-backend-frws.onrender.com/api/bank';
 
@@ -410,6 +411,8 @@ export default function Dashboard() {
             </button>
           </form>
         </section>
+
+        <BankingBot onTransferComplete={refreshDashboard} />
 
         <section style={styles.card}>
           <h2 style={styles.cardTitle}>Recent transactions</h2>

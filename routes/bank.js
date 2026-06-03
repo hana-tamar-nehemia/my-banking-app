@@ -1,20 +1,13 @@
 const express = require('express');
-const User = require('../models/User');
-const Transaction = require('../models/Transaction');
-const Notification = require('../models/Notification');
 const protect = require('../middleware/authMiddleware');
+const {
+  formatTransaction,
+  getUserBalance,
+  getRecentTransactions,
+  transferMoney,
+} = require('../services/bankingOperations');
 
 const router = express.Router();
-
-function formatTransaction(transaction) {
-  return {
-    id: transaction._id.toString(),
-    senderId: transaction.sender.toString(),
-    receiverId: transaction.receiver.toString(),
-    amount: transaction.amount,
-    timestamp: transaction.createdAt.toISOString(),
-  };
-}
 
 /**
  * @swagger
@@ -45,26 +38,17 @@ router.get('/dashboard/:userId', protect, async (req, res) => {
       return res.status(403).json({ error: 'Forbidden: Access denied to this account' });
     }
 
-    const user = await User.findById(req.params.userId);
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const transactions = await Transaction.find({
-      $or: [{ sender: user._id }, { receiver: user._id }],
-    })
-      .sort({ createdAt: -1 })
-      .limit(50);
+    const profile = await getUserBalance(req.params.userId);
+    const transactions = await getRecentTransactions(req.params.userId, 50);
 
     res.status(200).json({
-      username: user.username,
-      email: user.email,
-      balance: user.balance,
-      transactions: transactions.map(formatTransaction),
+      username: profile.username,
+      email: profile.email,
+      balance: profile.balance,
+      transactions,
     });
   } catch (err) {
-    if (err.name === 'CastError') {
+    if (err.message === 'User not found' || err.name === 'CastError') {
       return res.status(404).json({ error: 'User not found' });
     }
     console.error(err);
@@ -100,70 +84,27 @@ router.get('/dashboard/:userId', protect, async (req, res) => {
 router.post('/transaction', protect, async (req, res) => {
   try {
     const { receiverEmail, amount } = req.body;
-    const fromId = req.user.id;
-
-    const sender = await User.findById(fromId);
-    if (!sender) {
-      return res.status(404).json({ error: 'Sender not found' });
-    }
-
-    const receiver = await User.findOne({
-      email: receiverEmail?.toLowerCase(),
-    });
-    if (!receiver) {
-      return res.status(404).json({ error: 'Receiver not found' });
-    }
-
-    if (amount <= 0 || sender.balance < amount) {
-      return res.status(400).json({ error: 'Insufficient balance' });
-    }
-
-    sender.balance -= amount;
-    receiver.balance += amount;
-
-    await sender.save();
-    await receiver.save();
-
-    const transaction = new Transaction({
-      sender: sender._id,
-      receiver: receiver._id,
-      amount,
-    });
-    await transaction.save();
-
-    // Persist a notification for the receiver so it survives across logins/devices.
-    const notification = await Notification.create({
-      user: receiver._id,
-      type: 'transfer:received',
-      message: `You received $${amount.toFixed(2)} from ${sender.email}`,
-      senderEmail: sender.email,
-      amount,
-    });
-
-    // Push it in real time if the receiver is currently connected.
     const io = req.app.get('io');
-    if (io) {
-      io.to(receiver._id.toString()).emit('transfer:received', {
-        id: notification._id.toString(),
-        type: notification.type,
-        message: notification.message,
-        senderEmail: notification.senderEmail,
-        amount: notification.amount,
-        read: notification.read,
-        timestamp: notification.createdAt.toISOString(),
-      });
-    }
+
+    const result = await transferMoney(req.user.id, receiverEmail, amount, io);
 
     res.status(200).json({
-      message: 'Transaction successful',
-      transaction: formatTransaction(transaction),
+      message: result.message,
+      transaction: result.transaction,
     });
   } catch (err) {
-    if (err.name === 'CastError') {
+    const msg = err.message || 'Server error';
+    if (msg === 'Sender not found' || err.name === 'CastError') {
       return res.status(404).json({ error: 'Sender not found' });
     }
-    if (err.name === 'ValidationError') {
-      return res.status(400).json({ error: 'Insufficient balance' });
+    if (msg === 'Receiver not found') {
+      return res.status(404).json({ error: 'Receiver not found' });
+    }
+    if (msg === 'Insufficient balance' || msg.includes('Amount must')) {
+      return res.status(400).json({ error: msg });
+    }
+    if (msg.includes('own account')) {
+      return res.status(400).json({ error: msg });
     }
     console.error(err);
     res.status(500).json({ error: 'Server error' });
