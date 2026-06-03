@@ -1,166 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import NotificationCenter from '../components/NotificationCenter';
 import BankingBot from '../components/BankingBot';
+import BankLogo from '../components/BankLogo';
+import UserGuideModal from '../components/UserGuideModal';
+import { extractContactsFromTransactions } from '../utils/contacts';
 
 const API_BASE = 'https://bank-backend-frws.onrender.com/api/bank';
-
-const styles = {
-  page: {
-    minHeight: '100vh',
-    padding: '1.5rem',
-    background: 'linear-gradient(160deg, #f0f4f8 0%, #e8eef5 100%)',
-    fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
-  },
-  header: {
-    maxWidth: '720px',
-    margin: '0 auto 1.5rem',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: '1rem',
-  },
-  title: {
-    margin: 0,
-    fontSize: '1.5rem',
-    fontWeight: 700,
-    color: '#0f172a',
-  },
-  signOut: {
-    padding: '0.5rem 1rem',
-    fontSize: '0.875rem',
-    fontWeight: 600,
-    color: '#334155',
-    background: '#fff',
-    border: '1px solid #cbd5e1',
-    borderRadius: '8px',
-    cursor: 'pointer',
-  },
-  container: {
-    maxWidth: '720px',
-    margin: '0 auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1.25rem',
-  },
-  card: {
-    background: '#fff',
-    borderRadius: '12px',
-    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
-    padding: '1.5rem',
-  },
-  cardTitle: {
-    margin: '0 0 1rem',
-    fontSize: '1.125rem',
-    fontWeight: 600,
-    color: '#0f172a',
-  },
-  greeting: {
-    margin: '0 0 0.25rem',
-    fontSize: '0.95rem',
-    color: '#64748b',
-  },
-  balance: {
-    margin: 0,
-    fontSize: '2rem',
-    fontWeight: 700,
-    color: '#2563eb',
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-  },
-  field: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.4rem',
-  },
-  label: {
-    fontSize: '0.875rem',
-    fontWeight: 600,
-    color: '#334155',
-  },
-  input: {
-    padding: '0.65rem 0.75rem',
-    fontSize: '1rem',
-    border: '1px solid #cbd5e1',
-    borderRadius: '8px',
-    outline: 'none',
-  },
-  button: {
-    padding: '0.75rem 1rem',
-    fontSize: '1rem',
-    fontWeight: 600,
-    color: '#fff',
-    background: '#2563eb',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-    cursor: 'not-allowed',
-  },
-  error: {
-    padding: '0.75rem 1rem',
-    fontSize: '0.875rem',
-    color: '#b91c1c',
-    background: '#fef2f2',
-    border: '1px solid #fecaca',
-    borderRadius: '8px',
-    marginBottom: '1rem',
-  },
-  success: {
-    padding: '0.75rem 1rem',
-    fontSize: '0.875rem',
-    color: '#166534',
-    background: '#f0fdf4',
-    border: '1px solid #bbf7d0',
-    borderRadius: '8px',
-    marginBottom: '1rem',
-  },
-  transactionList: {
-    listStyle: 'none',
-    margin: 0,
-    padding: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.75rem',
-  },
-  transactionItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '0.75rem 1rem',
-    background: '#f8fafc',
-    borderRadius: '8px',
-    border: '1px solid #e2e8f0',
-  },
-  amountSent: {
-    fontWeight: 700,
-    color: '#dc2626',
-  },
-  amountReceived: {
-    fontWeight: 700,
-    color: '#16a34a',
-  },
-  transactionMeta: {
-    fontSize: '0.8rem',
-    color: '#64748b',
-  },
-  empty: {
-    margin: 0,
-    fontSize: '0.9rem',
-    color: '#94a3b8',
-  },
-  loading: {
-    textAlign: 'center',
-    color: '#64748b',
-    padding: '2rem',
-  },
-};
 
 function getStoredUser() {
   const raw = localStorage.getItem('user');
@@ -170,6 +17,15 @@ function getStoredUser() {
   } catch {
     return null;
   }
+}
+
+function getUserInitials(name) {
+  if (!name) return 'U';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
 }
 
 export default function Dashboard() {
@@ -186,8 +42,8 @@ export default function Dashboard() {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(true);
   const [transferring, setTransferring] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
-  // Reusable fetch so we can refresh on mount and whenever a live notification arrives.
   const refreshDashboard = useCallback(async () => {
     const storedUser = getStoredUser();
     const storedToken = localStorage.getItem('token');
@@ -197,7 +53,7 @@ export default function Dashboard() {
       const response = await axios.get(
         `${API_BASE}/dashboard/${storedUser._id}`,
         {
-          headers: { Authorization: `Bearer ${storedToken}` } // הזרקת ה-JWT החתום
+          headers: { Authorization: `Bearer ${storedToken}` },
         }
       );
       setUsername(response.data.username);
@@ -217,7 +73,11 @@ export default function Dashboard() {
     } catch (err) {
       const message = err.response?.data?.error || 'Failed to load dashboard.';
       setError(message);
-      if (err.response?.status === 401 || err.response?.status === 403 || err.response?.status === 404) {
+      if (
+        err.response?.status === 401 ||
+        err.response?.status === 403 ||
+        err.response?.status === 404
+      ) {
         localStorage.clear();
         navigate('/login');
       }
@@ -228,7 +88,6 @@ export default function Dashboard() {
     const storedUser = getStoredUser();
     const storedToken = localStorage.getItem('token');
 
-    // אם חסר יוזר או טוקן בזיכרון, זורקים ישירות למסך התחברות
     if (!storedUser?._id || !storedToken) {
       localStorage.clear();
       navigate('/login');
@@ -237,9 +96,18 @@ export default function Dashboard() {
 
     setUserId(storedUser._id);
     setToken(storedToken);
-
     refreshDashboard().finally(() => setLoading(false));
   }, [navigate, refreshDashboard]);
+
+  const contacts = useMemo(
+    () =>
+      extractContactsFromTransactions(
+        recentTransactions,
+        userId,
+        email
+      ),
+    [recentTransactions, userId, email]
+  );
 
   const handleSignOut = () => {
     localStorage.clear();
@@ -253,7 +121,7 @@ export default function Dashboard() {
     setTransferring(true);
 
     const numericAmount = Number(amount);
-    const token = localStorage.getItem('token');
+    const authToken = localStorage.getItem('token');
 
     try {
       const response = await axios.post(
@@ -263,20 +131,17 @@ export default function Dashboard() {
           amount: numericAmount,
         },
         {
-          headers: { Authorization: `Bearer ${token}` } // הזרקת ה-JWT המאבטח את ההעברה
+          headers: { Authorization: `Bearer ${authToken}` },
         }
       );
 
       if (response.status === 200 && response.data.transaction) {
         const transaction = response.data.transaction;
-
-        const dashboardRes = await axios.get(
-          `${API_BASE}/dashboard/${userId}`,
-          {
-            headers: { Authorization: `Bearer ${token}` }
-          }
-        );
+        const dashboardRes = await axios.get(`${API_BASE}/dashboard/${userId}`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
         setBalance(dashboardRes.data.balance);
+        setRecentTransactions(dashboardRes.data.transactions || []);
 
         const storedUser = getStoredUser();
         if (storedUser) {
@@ -289,103 +154,143 @@ export default function Dashboard() {
           );
         }
 
-        setRecentTransactions((prev) => [transaction, ...prev]);
         setReceiverEmail('');
         setAmount('');
         setSuccess(response.data.message || 'Transaction successful');
       }
     } catch (err) {
-      const message =
+      setError(
         err.response?.data?.error ||
-        err.response?.data?.message ||
-        'Transfer failed. Please try again.';
-      setError(message);
+          err.response?.data?.message ||
+          'Transfer failed. Please try again.'
+      );
     } finally {
       setTransferring(false);
     }
   };
 
-  const formatTransactionAmount = (transaction) => {
-    const isSender = transaction.senderId === userId;
-    const prefix = isSender ? '-' : '+';
-    const style = isSender ? styles.amountSent : styles.amountReceived;
+  const selectContact = (contactEmail) => {
+    setReceiverEmail(contactEmail);
+    setSuccess('');
+    document.getElementById('receiverEmail')?.focus();
+  };
+
+  const formatTxParty = (tx) => {
+    if (tx.counterpartyEmail) return tx.counterpartyEmail;
+    if (tx.counterpartyUsername) return tx.counterpartyUsername;
+    return tx.type === 'sent' ? 'Outgoing transfer' : 'Incoming transfer';
+  };
+
+  const formatTxAmount = (tx) => {
+    const isOutgoing = tx.type === 'sent' || tx.senderId === userId;
+    const prefix = isOutgoing ? '-' : '+';
+    const className = isOutgoing
+      ? 'tx-row__amount tx-row__amount--out'
+      : 'tx-row__amount tx-row__amount--in';
     return (
-      <span style={style}>
-        {prefix}${transaction.amount.toFixed(2)}
+      <span className={className}>
+        {prefix}${Number(tx.amount).toFixed(2)}
       </span>
     );
   };
 
-  const formatTransactionLabel = (transaction) => {
-    const isSender = transaction.senderId === userId;
-    return isSender ? 'Sent' : 'Received';
-  };
-
   if (loading) {
-    return (
-      <div style={styles.page}>
-        <p style={styles.loading}>Loading your dashboard…</p>
-      </div>
-    );
+    return <div className="loading-screen">Loading your dashboard…</div>;
   }
 
   return (
-    <div style={styles.page}>
-      <header style={styles.header}>
-        <h1 style={styles.title}>Dashboard</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <NotificationCenter token={token} onNewNotification={refreshDashboard} />
-          <button type="button" style={styles.signOut} onClick={handleSignOut}>
-            Sign Out
-          </button>
-        </div>
-      </header>
+    <div className="dashboard">
+      <div className="dashboard__shell">
+        <header className="dashboard__header">
+          <div className="dashboard__header-left">
+            <BankLogo compact />
+            <div
+              className="dashboard__avatar"
+              aria-hidden="true"
+              title={username}
+            >
+              {getUserInitials(username)}
+            </div>
+            <p className="dashboard__greeting">Hi, {username}!</p>
+          </div>
+          <div className="dashboard__header-right">
+            <NotificationCenter token={token} onNewNotification={refreshDashboard} />
+            <button
+              type="button"
+              className="dashboard__icon-btn"
+              onClick={() => setGuideOpen(true)}
+              aria-label="Open user guide"
+              title="Quick guide"
+            >
+              ⓘ
+            </button>
+            <button
+              type="button"
+              className="dashboard__sign-out"
+              onClick={handleSignOut}
+            >
+              Sign Out
+            </button>
+          </div>
+        </header>
 
-      <main style={styles.container}>
         {error && (
-          <div style={styles.error} role="alert">
+          <div className="alert-error" role="alert">
             {error}
           </div>
         )}
         {success && (
-          <div style={styles.success} role="status">
+          <div className="alert-success" role="status">
             {success}
           </div>
         )}
 
-        <section style={styles.card}>
-          <p style={styles.greeting}>Welcome, {username}</p>
-          <p style={{ margin: '0 0 0.25rem', fontSize: '0.875rem', color: '#64748b' }}>
-            {email}
-          </p>
-          <p style={styles.cardTitle}>Account balance</p>
-          <p style={styles.balance}>
+        <section className="balance-card" aria-label="Account balance">
+          <p className="balance-card__label">Account Balance</p>
+          <p className="balance-card__amount">
             ${balance !== null ? balance.toFixed(2) : '—'}
           </p>
+          {contacts.length > 0 && (
+            <div
+              className="contacts-scroll"
+              role="list"
+              aria-label="Quick transfer contacts"
+            >
+              {contacts.map((c) => (
+                <button
+                  key={c.email}
+                  type="button"
+                  className="contact-chip"
+                  role="listitem"
+                  onClick={() => selectContact(c.email)}
+                  title={`Send to ${c.email}`}
+                >
+                  <span className="contact-chip__avatar">{c.initials}</span>
+                  <span className="contact-chip__name">{c.displayName}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
-        <section style={styles.card}>
-          <h2 style={styles.cardTitle}>Send Money</h2>
-          <form style={styles.form} onSubmit={handleTransfer} noValidate>
-            <div style={styles.field}>
-              <label htmlFor="receiverEmail" style={styles.label}>
-                Receiver email
-              </label>
+        <section className="card-surface" aria-labelledby="transfer-heading">
+          <h2 id="transfer-heading" className="card-surface__title">
+            Send Money
+          </h2>
+          <form className="form-stack" onSubmit={handleTransfer} noValidate>
+            <div className="form-field">
+              <label htmlFor="receiverEmail">Receiver email</label>
               <input
                 id="receiverEmail"
                 type="email"
                 value={receiverEmail}
                 onChange={(e) => setReceiverEmail(e.target.value)}
-                style={styles.input}
                 placeholder="friend@example.com"
                 required
               />
             </div>
-
-            <div style={styles.field}>
-              <label htmlFor="amount" style={styles.label}>
-                Amount
-              </label>
+            <div className="form-field">
+              <label htmlFor="amount">Amount ($)</label>
               <input
                 id="amount"
                 type="number"
@@ -393,18 +298,13 @@ export default function Dashboard() {
                 step="0.01"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                style={styles.input}
                 placeholder="100.00"
                 required
               />
             </div>
-
             <button
               type="submit"
-              style={{
-                ...styles.button,
-                ...(transferring ? styles.buttonDisabled : {}),
-              }}
+              className="btn-primary"
               disabled={transferring}
             >
               {transferring ? 'Sending…' : 'Send Money'}
@@ -412,29 +312,32 @@ export default function Dashboard() {
           </form>
         </section>
 
-        <BankingBot onTransferComplete={refreshDashboard} />
-
-        <section style={styles.card}>
-          <h2 style={styles.cardTitle}>Recent transactions</h2>
+        <section className="card-surface" aria-labelledby="tx-heading">
+          <h2 id="tx-heading" className="card-surface__title">
+            Latest Transactions
+          </h2>
           {recentTransactions.length === 0 ? (
-            <p style={styles.empty}>No transactions yet.</p>
+            <p className="empty-hint">No transactions yet.</p>
           ) : (
-            <ul style={styles.transactionList}>
+            <ul className="tx-list">
               {recentTransactions.map((tx) => (
-                <li key={tx.id} style={styles.transactionItem}>
+                <li key={tx.id} className="tx-row">
                   <div>
-                    <strong>{formatTransactionLabel(tx)}</strong>
-                    <p style={styles.transactionMeta}>
+                    <p className="tx-row__party">{formatTxParty(tx)}</p>
+                    <p className="tx-row__time">
                       {new Date(tx.timestamp).toLocaleString()}
                     </p>
                   </div>
-                  {formatTransactionAmount(tx)}
+                  {formatTxAmount(tx)}
                 </li>
               ))}
             </ul>
           )}
         </section>
-      </main>
+      </div>
+
+      <BankingBot onTransferComplete={refreshDashboard} />
+      <UserGuideModal open={guideOpen} onClose={() => setGuideOpen(false)} />
     </div>
   );
 }

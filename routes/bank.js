@@ -39,7 +39,9 @@ router.get('/dashboard/:userId', protect, async (req, res) => {
     }
 
     const profile = await getUserBalance(req.params.userId);
-    const transactions = await getRecentTransactions(req.params.userId, 50);
+    const transactions = await getRecentTransactions(req.params.userId, 50, {
+      withParties: true,
+    });
 
     res.status(200).json({
       username: profile.username,
