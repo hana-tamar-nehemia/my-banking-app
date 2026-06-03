@@ -116,9 +116,10 @@ function buildTools(userId, io, { tool, z }) {
       schema: z.object({
         receiverEmail: z
           .string()
-          .email()
           .describe('Recipient email address'),
-        amount: z.number().positive().describe('Amount in USD to send'),
+        amount: z
+          .number()
+          .describe('Amount in USD to send (must be greater than 0)'),
       }),
     }
   );
