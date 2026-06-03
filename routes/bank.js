@@ -85,10 +85,16 @@ router.get('/dashboard/:userId', protect, async (req, res) => {
  */
 router.post('/transaction', protect, async (req, res) => {
   try {
-    const { receiverEmail, amount } = req.body;
+    const { receiverEmail, amount, reason } = req.body;
     const io = req.app.get('io');
 
-    const result = await transferMoney(req.user.id, receiverEmail, amount, io);
+    const result = await transferMoney(
+      req.user.id,
+      receiverEmail,
+      amount,
+      io,
+      reason
+    );
 
     res.status(200).json({
       message: result.message,

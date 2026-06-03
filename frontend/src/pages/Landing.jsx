@@ -25,9 +25,9 @@ export default function Landing() {
       setView(VIEWS.LOGIN);
     }
   }, [searchParams, location.pathname]);
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
@@ -104,7 +104,8 @@ export default function Landing() {
   };
 
   return (
-    <div className="auth-page">
+    <div className="landing-page">
+      <div className="landing-page__mesh" aria-hidden="true" />
       <div className="auth-page__blobs" aria-hidden="true">
         <div className="auth-page__blob auth-page__blob--1" />
         <div className="auth-page__blob auth-page__blob--2" />
@@ -112,9 +113,9 @@ export default function Landing() {
       </div>
       <BankWatermark />
 
-      <div className="auth-page__inner">
-        <header className="auth-topbar">
-          <BankLogo />
+      <div className="landing-page__shell">
+        <header className="landing-topbar">
+          <BankLogo hero />
           {view === VIEWS.HERO ? (
             <button
               type="button"
@@ -140,163 +141,203 @@ export default function Landing() {
           )}
         </header>
 
-        <div className="glass-card">
-          {view === VIEWS.HERO && (
-            <>
-              <h1 className="auth-hero__title">
-                Get a card you can control with transparency
-              </h1>
-              <p className="auth-hero__subtitle">
-                Open an account in a few clicks. No need to deposit any money now.
-              </p>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => {
-                  resetError();
-                  setView(VIEWS.REGISTER);
-                }}
-              >
-                Open account with us
-              </button>
-              <p className="auth-form__footer" style={{ marginTop: '1.25rem' }}>
-                Already have an account?{' '}
+        <div className="landing-grid">
+          <section className="landing-hero" aria-label="Marketing">
+            <h1 className="landing-hero__title">
+              Get a card you can control with transparency
+            </h1>
+            <p className="landing-hero__subtitle">
+              Open an account in a few clicks. No need to deposit any money now.
+            </p>
+            {view === VIEWS.HERO && (
+              <div className="landing-hero__actions">
                 <button
                   type="button"
-                  className="btn-text"
-                  onClick={() => {
-                    resetError();
-                    setView(VIEWS.LOGIN);
-                  }}
-                >
-                  Login
-                </button>
-              </p>
-            </>
-          )}
-
-          {view === VIEWS.LOGIN && (
-            <>
-              <h2 className="auth-form__title">Welcome back</h2>
-              <p className="auth-form__subtitle">Sign in to your account</p>
-              {error && (
-                <div className="alert-error" role="alert">
-                  {error}
-                </div>
-              )}
-              <form className="form-stack" onSubmit={handleLogin} noValidate>
-                <div className="form-field">
-                  <label htmlFor="login-email">Email</label>
-                  <input
-                    id="login-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="jane@example.com"
-                    required
-                    autoComplete="email"
-                  />
-                </div>
-                <div className="form-field">
-                  <label htmlFor="login-password">Password</label>
-                  <input
-                    id="login-password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                    autoComplete="current-password"
-                  />
-                </div>
-                <button type="submit" className="btn-primary" disabled={loading}>
-                  {loading ? 'Signing in…' : 'Log in'}
-                </button>
-              </form>
-              <p className="auth-form__footer">
-                New here?{' '}
-                <button
-                  type="button"
-                  className="btn-text"
+                  className="btn-primary landing-hero__cta"
                   onClick={() => {
                     resetError();
                     setView(VIEWS.REGISTER);
                   }}
                 >
-                  Create New Account
+                  Open account with us
                 </button>
-              </p>
-            </>
-          )}
+                <p className="landing-hero__footer">
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    className="btn-text"
+                    onClick={() => {
+                      resetError();
+                      setView(VIEWS.LOGIN);
+                    }}
+                  >
+                    Login
+                  </button>
+                </p>
+              </div>
+            )}
+          </section>
 
-          {view === VIEWS.REGISTER && (
-            <>
-              <h2 className="auth-form__title">Create New Account</h2>
-              <p className="auth-form__subtitle">
-                Sign up to start banking with vibe.bank//
-              </p>
-              {error && (
-                <div className="alert-error" role="alert">
-                  {error}
-                </div>
+          <section className="landing-panel" aria-label="Account access">
+            <div className="glass-card landing-glass">
+              {view === VIEWS.HERO && (
+                <>
+                  <p className="landing-glass__eyebrow">Get started</p>
+                  <h2 className="landing-glass__heading">Your money, clearly.</h2>
+                  <p className="landing-glass__text">
+                    Create an account or sign in to manage balances, send transfers,
+                    and chat with your AI banking assistant.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => {
+                      resetError();
+                      setView(VIEWS.REGISTER);
+                    }}
+                  >
+                    Open account with us
+                  </button>
+                  <p className="auth-form__footer">
+                    Returning customer?{' '}
+                    <button
+                      type="button"
+                      className="btn-text"
+                      onClick={() => {
+                        resetError();
+                        setView(VIEWS.LOGIN);
+                      }}
+                    >
+                      Login
+                    </button>
+                  </p>
+                </>
               )}
-              <form className="form-stack" onSubmit={handleSignup} noValidate>
-                <div className="form-field">
-                  <label htmlFor="signup-username">Username</label>
-                  <input
-                    id="signup-username"
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="jane_doe"
-                    required
-                    autoComplete="username"
-                  />
-                </div>
-                <div className="form-field">
-                  <label htmlFor="signup-email">Email</label>
-                  <input
-                    id="signup-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="jane@example.com"
-                    required
-                    autoComplete="email"
-                  />
-                </div>
-                <div className="form-field">
-                  <label htmlFor="signup-password">Password</label>
-                  <input
-                    id="signup-password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                    autoComplete="new-password"
-                    minLength={6}
-                  />
-                </div>
-                <button type="submit" className="btn-primary" disabled={loading}>
-                  {loading ? 'Creating account…' : 'Create New Account'}
-                </button>
-              </form>
-              <p className="auth-form__footer">
-                Already registered?{' '}
-                <button
-                  type="button"
-                  className="btn-text"
-                  onClick={() => {
-                    resetError();
-                    setView(VIEWS.LOGIN);
-                  }}
-                >
-                  Login
-                </button>
-              </p>
-            </>
-          )}
+
+              {view === VIEWS.LOGIN && (
+                <>
+                  <h2 className="auth-form__title">Welcome back</h2>
+                  <p className="auth-form__subtitle">Sign in to your account</p>
+                  {error && (
+                    <div className="alert-error" role="alert">
+                      {error}
+                    </div>
+                  )}
+                  <form className="form-stack" onSubmit={handleLogin} noValidate>
+                    <div className="form-field">
+                      <label htmlFor="login-email">Email</label>
+                      <input
+                        id="login-email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="jane@example.com"
+                        required
+                        autoComplete="email"
+                      />
+                    </div>
+                    <div className="form-field">
+                      <label htmlFor="login-password">Password</label>
+                      <input
+                        id="login-password"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        required
+                        autoComplete="current-password"
+                      />
+                    </div>
+                    <button type="submit" className="btn-primary" disabled={loading}>
+                      {loading ? 'Signing in…' : 'Log in'}
+                    </button>
+                  </form>
+                  <p className="auth-form__footer">
+                    New here?{' '}
+                    <button
+                      type="button"
+                      className="btn-text"
+                      onClick={() => {
+                        resetError();
+                        setView(VIEWS.REGISTER);
+                      }}
+                    >
+                      Create New Account
+                    </button>
+                  </p>
+                </>
+              )}
+
+              {view === VIEWS.REGISTER && (
+                <>
+                  <h2 className="auth-form__title">Create New Account</h2>
+                  <p className="auth-form__subtitle">
+                    Join vibe.bank// in minutes
+                  </p>
+                  {error && (
+                    <div className="alert-error" role="alert">
+                      {error}
+                    </div>
+                  )}
+                  <form className="form-stack" onSubmit={handleSignup} noValidate>
+                    <div className="form-field">
+                      <label htmlFor="signup-username">Username</label>
+                      <input
+                        id="signup-username"
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        placeholder="jane_doe"
+                        required
+                        autoComplete="username"
+                      />
+                    </div>
+                    <div className="form-field">
+                      <label htmlFor="signup-email">Email</label>
+                      <input
+                        id="signup-email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="jane@example.com"
+                        required
+                        autoComplete="email"
+                      />
+                    </div>
+                    <div className="form-field">
+                      <label htmlFor="signup-password">Password</label>
+                      <input
+                        id="signup-password"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        required
+                        autoComplete="new-password"
+                        minLength={6}
+                      />
+                    </div>
+                    <button type="submit" className="btn-primary" disabled={loading}>
+                      {loading ? 'Creating account…' : 'Create New Account'}
+                    </button>
+                  </form>
+                  <p className="auth-form__footer">
+                    Already registered?{' '}
+                    <button
+                      type="button"
+                      className="btn-text"
+                      onClick={() => {
+                        resetError();
+                        setView(VIEWS.LOGIN);
+                      }}
+                    >
+                      Login
+                    </button>
+                  </p>
+                </>
+              )}
+            </div>
+          </section>
         </div>
       </div>
     </div>

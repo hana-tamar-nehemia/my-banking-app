@@ -14,6 +14,7 @@ function formatTransaction(transaction) {
     senderId: idOf(transaction.sender),
     receiverId: idOf(transaction.receiver),
     amount: transaction.amount,
+    reason: transaction.reason ?? null,
     timestamp: transaction.createdAt.toISOString(),
   };
 }
@@ -68,7 +69,7 @@ async function getRecentTransactions(userId, limit = 10, { withParties = false }
 /**
  * Shared transfer logic used by REST API and AI assistant tools.
  */
-async function transferMoney(fromUserId, receiverEmail, amount, io = null) {
+async function transferMoney(fromUserId, receiverEmail, amount, io = null, reason = null) {
   const sender = await User.findById(fromUserId);
   if (!sender) {
     throw new Error('Sender not found');
@@ -99,11 +100,19 @@ async function transferMoney(fromUserId, receiverEmail, amount, io = null) {
   await sender.save();
   await receiver.save();
 
+  const trimmedReason =
+    typeof reason === 'string' && reason.trim() ? reason.trim() : null;
+
   const transaction = await Transaction.create({
     sender: sender._id,
     receiver: receiver._id,
     amount: numericAmount,
+    ...(trimmedReason ? { reason: trimmedReason } : {}),
   });
+
+  const populated = await Transaction.findById(transaction._id)
+    .populate('sender', 'email username')
+    .populate('receiver', 'email username');
 
   const notification = await Notification.create({
     user: receiver._id,
@@ -127,7 +136,7 @@ async function transferMoney(fromUserId, receiverEmail, amount, io = null) {
 
   return {
     message: 'Transaction successful',
-    transaction: formatTransaction(transaction),
+    transaction: formatTransactionWithParties(populated, fromUserId),
     newBalance: sender.balance,
   };
 }

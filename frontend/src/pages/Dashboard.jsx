@@ -5,6 +5,8 @@ import NotificationCenter from '../components/NotificationCenter';
 import BankingBot from '../components/BankingBot';
 import BankLogo from '../components/BankLogo';
 import UserGuideModal from '../components/UserGuideModal';
+import TransferModal from '../components/TransferModal';
+import ReceiptModal from '../components/ReceiptModal';
 import { extractContactsFromTransactions } from '../utils/contacts';
 
 const API_BASE = 'https://bank-backend-frws.onrender.com/api/bank';
@@ -35,14 +37,18 @@ export default function Dashboard() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [balance, setBalance] = useState(null);
-  const [receiverEmail, setReceiverEmail] = useState('');
-  const [amount, setAmount] = useState('');
   const [recentTransactions, setRecentTransactions] = useState([]);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(true);
-  const [transferring, setTransferring] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [receiverEmail, setReceiverEmail] = useState('');
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [transferError, setTransferError] = useState('');
+  const [transferring, setTransferring] = useState(false);
+  const [receipt, setReceipt] = useState(null);
 
   const refreshDashboard = useCallback(async () => {
     const storedUser = getStoredUser();
@@ -101,11 +107,7 @@ export default function Dashboard() {
 
   const contacts = useMemo(
     () =>
-      extractContactsFromTransactions(
-        recentTransactions,
-        userId,
-        email
-      ),
+      extractContactsFromTransactions(recentTransactions, userId, email),
     [recentTransactions, userId, email]
   );
 
@@ -114,10 +116,23 @@ export default function Dashboard() {
     navigate('/login');
   };
 
+  const openTransfer = (prefillEmail = '') => {
+    setTransferError('');
+    setReceiverEmail(prefillEmail);
+    setAmount('');
+    setReason('');
+    setTransferOpen(true);
+  };
+
+  const closeTransfer = () => {
+    if (transferring) return;
+    setTransferOpen(false);
+    setTransferError('');
+  };
+
   const handleTransfer = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
+    setTransferError('');
     setTransferring(true);
 
     const numericAmount = Number(amount);
@@ -129,6 +144,7 @@ export default function Dashboard() {
         {
           receiverEmail: receiverEmail.trim().toLowerCase(),
           amount: numericAmount,
+          reason: reason.trim() || undefined,
         },
         {
           headers: { Authorization: `Bearer ${authToken}` },
@@ -136,30 +152,20 @@ export default function Dashboard() {
       );
 
       if (response.status === 200 && response.data.transaction) {
-        const transaction = response.data.transaction;
-        const dashboardRes = await axios.get(`${API_BASE}/dashboard/${userId}`, {
-          headers: { Authorization: `Bearer ${authToken}` },
+        const tx = response.data.transaction;
+        setTransferOpen(false);
+        setReceipt({
+          senderEmail: tx.senderEmail || email,
+          receiverEmail: tx.receiverEmail || receiverEmail.trim().toLowerCase(),
+          amount: tx.amount,
+          timestamp: tx.timestamp,
+          reason: tx.reason,
         });
-        setBalance(dashboardRes.data.balance);
-        setRecentTransactions(dashboardRes.data.transactions || []);
 
-        const storedUser = getStoredUser();
-        if (storedUser) {
-          localStorage.setItem(
-            'user',
-            JSON.stringify({
-              ...storedUser,
-              balance: dashboardRes.data.balance,
-            })
-          );
-        }
-
-        setReceiverEmail('');
-        setAmount('');
-        setSuccess(response.data.message || 'Transaction successful');
+        await refreshDashboard();
       }
     } catch (err) {
-      setError(
+      setTransferError(
         err.response?.data?.error ||
           err.response?.data?.message ||
           'Transfer failed. Please try again.'
@@ -167,12 +173,6 @@ export default function Dashboard() {
     } finally {
       setTransferring(false);
     }
-  };
-
-  const selectContact = (contactEmail) => {
-    setReceiverEmail(contactEmail);
-    setSuccess('');
-    document.getElementById('receiverEmail')?.focus();
   };
 
   const formatTxParty = (tx) => {
@@ -239,18 +239,30 @@ export default function Dashboard() {
             {error}
           </div>
         )}
-        {success && (
-          <div className="alert-success" role="status">
-            {success}
-          </div>
-        )}
 
-        <section className="balance-card" aria-label="Account balance">
+        <section className="balance-card balance-card--centered" aria-label="Account balance">
           <p className="balance-card__label">Account Balance</p>
           <p className="balance-card__amount">
             ${balance !== null ? balance.toFixed(2) : '—'}
           </p>
-          {contacts.length > 0 && (
+        </section>
+
+        <section className="card-white" aria-label="Quick transfer">
+          <div className="card-white__header">
+            <h2 className="card-white__title">Quick Transfer</h2>
+            <button
+              type="button"
+              className="btn-send-money"
+              onClick={() => openTransfer()}
+            >
+              Send Money
+            </button>
+          </div>
+          {contacts.length === 0 ? (
+            <p className="empty-hint">
+              Your recent contacts will appear here after your first transfer.
+            </p>
+          ) : (
             <div
               className="contacts-scroll"
               role="list"
@@ -262,7 +274,7 @@ export default function Dashboard() {
                   type="button"
                   className="contact-chip"
                   role="listitem"
-                  onClick={() => selectContact(c.email)}
+                  onClick={() => openTransfer(c.email)}
                   title={`Send to ${c.email}`}
                 >
                   <span className="contact-chip__avatar">{c.initials}</span>
@@ -271,45 +283,6 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-        </section>
-
-        <section className="card-surface" aria-labelledby="transfer-heading">
-          <h2 id="transfer-heading" className="card-surface__title">
-            Send Money
-          </h2>
-          <form className="form-stack" onSubmit={handleTransfer} noValidate>
-            <div className="form-field">
-              <label htmlFor="receiverEmail">Receiver email</label>
-              <input
-                id="receiverEmail"
-                type="email"
-                value={receiverEmail}
-                onChange={(e) => setReceiverEmail(e.target.value)}
-                placeholder="friend@example.com"
-                required
-              />
-            </div>
-            <div className="form-field">
-              <label htmlFor="amount">Amount ($)</label>
-              <input
-                id="amount"
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="100.00"
-                required
-              />
-            </div>
-            <button
-              type="submit"
-              className="btn-primary"
-              disabled={transferring}
-            >
-              {transferring ? 'Sending…' : 'Send Money'}
-            </button>
-          </form>
         </section>
 
         <section className="card-surface" aria-labelledby="tx-heading">
@@ -324,6 +297,9 @@ export default function Dashboard() {
                 <li key={tx.id} className="tx-row">
                   <div>
                     <p className="tx-row__party">{formatTxParty(tx)}</p>
+                    {tx.reason && (
+                      <p className="tx-row__reason">{tx.reason}</p>
+                    )}
                     <p className="tx-row__time">
                       {new Date(tx.timestamp).toLocaleString()}
                     </p>
@@ -335,6 +311,26 @@ export default function Dashboard() {
           )}
         </section>
       </div>
+
+      <TransferModal
+        open={transferOpen}
+        onClose={closeTransfer}
+        receiverEmail={receiverEmail}
+        onReceiverEmailChange={setReceiverEmail}
+        amount={amount}
+        onAmountChange={setAmount}
+        reason={reason}
+        onReasonChange={setReason}
+        onSubmit={handleTransfer}
+        transferring={transferring}
+        error={transferError}
+      />
+
+      <ReceiptModal
+        open={Boolean(receipt)}
+        receipt={receipt}
+        onClose={() => setReceipt(null)}
+      />
 
       <BankingBot onTransferComplete={refreshDashboard} />
       <UserGuideModal open={guideOpen} onClose={() => setGuideOpen(false)} />

@@ -30,22 +30,27 @@ export function BankWatermark({ size = 200 }) {
   );
 }
 
-export default function BankLogo({ compact = false }) {
+export default function BankLogo({ compact = false, hero = false }) {
+  const iconSize = hero ? 52 : compact ? 22 : 32;
+  const fontSize = hero ? 'clamp(2rem, 5vw, 2.75rem)' : compact ? '0.95rem' : '1.2rem';
+
   return (
     <div
+      className={hero ? 'bank-logo bank-logo--hero' : 'bank-logo'}
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '0.5rem',
+        gap: hero ? '0.75rem' : '0.5rem',
         color: 'var(--text-primary)',
       }}
     >
-      <BankIcon size={compact ? 22 : 28} />
+      <BankIcon size={iconSize} />
       <span
         style={{
-          fontSize: compact ? '0.95rem' : '1.05rem',
+          fontSize,
           fontWeight: 800,
-          letterSpacing: '-0.02em',
+          letterSpacing: '-0.03em',
+          lineHeight: 1.1,
         }}
       >
         vibe.bank//
