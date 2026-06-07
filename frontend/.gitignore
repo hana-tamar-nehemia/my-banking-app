@@ -9,6 +9,11 @@ lerna-debug.log*
 
 node_modules
 dist
+
+# Cypress
+cypress/videos
+cypress/screenshots
+cypress/downloads
 dist-ssr
 *.local
 

@@ -12,25 +12,25 @@ const router = express.Router();
 /**
  * @swagger
  * /api/bank/dashboard/{userId}:
- * get:
- * summary: Get user dashboard with account balance (Protected via JWT)
- * tags: [Bank]
- * parameters:
- * - in: path
- * name: userId
- * required: true
- * schema:
- * type: string
- * description: The user's unique ID
- * responses:
- * 200:
- * description: Dashboard data retrieved successfully
- * 401:
- * description: Not authorized, token missing or failed
- * 403:
- * description: Forbidden, accessing another user's data
- * 404:
- * description: User not found
+ *   get:
+ *     summary: Get user dashboard with account balance (Protected via JWT)
+ *     tags: [Bank]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The user's unique ID
+ *     responses:
+ *       200:
+ *         description: Dashboard data retrieved successfully
+ *       401:
+ *         description: Not authorized, token missing or failed
+ *       403:
+ *         description: Forbidden, accessing another user's data
+ *       404:
+ *         description: User not found
  */
 router.get('/dashboard/:userId', protect, async (req, res) => {
   try {
@@ -61,27 +61,38 @@ router.get('/dashboard/:userId', protect, async (req, res) => {
 /**
  * @swagger
  * /api/bank/transaction:
- * post:
- * summary: Transfer funds from the authenticated user (sender derived from JWT)
- * tags: [Bank]
- * requestBody:
- * required: true
- * content:
- * application/json:
- * schema:
- * type: object
- * required:
- * - receiverEmail
- * - amount
- * responses:
- * 200:
- * description: Transaction completed successfully
- * 401:
- * description: Not authorized
- * 400:
- * description: Insufficient balance
- * 404:
- * description: Sender or receiver not found
+ *   post:
+ *     summary: Transfer funds from the authenticated user (sender derived from JWT)
+ *     tags: [Bank]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - receiverEmail
+ *               - amount
+ *             properties:
+ *               receiverEmail:
+ *                 type: string
+ *                 format: email
+ *                 example: receiver@example.com
+ *               amount:
+ *                 type: number
+ *                 example: 100
+ *               reason:
+ *                 type: string
+ *                 description: Optional note describing the transfer
+ *     responses:
+ *       200:
+ *         description: Transaction completed successfully
+ *       401:
+ *         description: Not authorized
+ *       400:
+ *         description: Insufficient balance
+ *       404:
+ *         description: Sender or receiver not found
  */
 router.post('/transaction', protect, async (req, res) => {
   try {
