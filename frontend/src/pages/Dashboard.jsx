@@ -52,9 +52,12 @@ export default function Dashboard() {
 
   const refreshDashboard = useCallback(async () => {
     const storedUser = getStoredUser();
+    // get the JWT token from localStorage
     const storedToken = localStorage.getItem('token');
+  
     if (!storedUser?._id || !storedToken) return;
 
+    // get the dashboard data from the backend
     try {
       const response = await axios.get(
         `${API_BASE}/dashboard/${storedUser._id}`,

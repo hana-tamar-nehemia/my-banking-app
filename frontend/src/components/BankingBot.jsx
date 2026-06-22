@@ -15,6 +15,7 @@ export default function BankingBot({ onTransferComplete }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [loanOffer, setLoanOffer] = useState(null);
   const listRef = useRef(null);
 
   const scrollToBottom = useCallback(() => {
@@ -25,16 +26,46 @@ export default function BankingBot({ onTransferComplete }) {
     });
   }, []);
 
+  const postToBot = async ({ text, historyForApi, loanDecision = null }) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setError('You are not signed in.');
+      return null;
+    }
+
+    const response = await axios.post(
+      BOT_API,
+      {
+        message: text,
+        history: historyForApi,
+        ...(loanDecision ? { loanDecision } : {}),
+      },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    return response.data;
+  };
+
+  const applyAssistantResponse = async (data) => {
+    const assistantMessage = {
+      role: 'assistant',
+      content: data.reply || 'No response from assistant.',
+    };
+
+    setMessages((prev) => [...prev, assistantMessage]);
+    setLoanOffer(data.loanOffer ?? null);
+
+    if (data.refreshDashboard && typeof onTransferComplete === 'function') {
+      await onTransferComplete();
+    }
+  };
+
   const sendMessage = async (e) => {
     e.preventDefault();
     const text = input.trim();
     if (!text || loading) return;
-
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setError('You are not signed in.');
-      return;
-    }
 
     const userMessage = { role: 'user', content: text };
     const historyForApi = messages.filter((m) => m.role !== 'system');
@@ -45,28 +76,11 @@ export default function BankingBot({ onTransferComplete }) {
     setLoading(true);
     scrollToBottom();
 
+    // send the AI message to the backend and get the response 
     try {
-      const response = await axios.post(
-        BOT_API,
-        {
-          message: text,
-          history: historyForApi,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-
-      const assistantMessage = {
-        role: 'assistant',
-        content: response.data.reply || 'No response from assistant.',
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-
-      if (response.data.refreshDashboard && typeof onTransferComplete === 'function') {
-        await onTransferComplete();
-      }
+      const data = await postToBot({ text, historyForApi });
+      if (!data) return;
+      await applyAssistantResponse(data);
     } catch (err) {
       const message =
         err.response?.data?.error ||
@@ -75,6 +89,39 @@ export default function BankingBot({ onTransferComplete }) {
       setError(message);
       setMessages((prev) => prev.slice(0, -1));
       setInput(text);
+    } finally {
+      setLoading(false);
+      scrollToBottom();
+    }
+  };
+
+  const handleLoanDecision = async (decision) => {
+    if (loading || !loanOffer) return;
+
+    const label = decision === 'accept' ? 'Yes, accept the loan' : 'No, cancel';
+    const userMessage = { role: 'user', content: label };
+    const historyForApi = messages.filter((m) => m.role !== 'system');
+
+    setMessages((prev) => [...prev, userMessage]);
+    setError('');
+    setLoading(true);
+    scrollToBottom();
+
+    try {
+      const data = await postToBot({
+        text: label,
+        historyForApi,
+        loanDecision: decision,
+      });
+      if (!data) return;
+      await applyAssistantResponse(data);
+    } catch (err) {
+      const message =
+        err.response?.data?.error ||
+        err.message ||
+        'Could not reach the banking assistant.';
+      setError(message);
+      setMessages((prev) => prev.slice(0, -1));
     } finally {
       setLoading(false);
       scrollToBottom();
@@ -125,6 +172,31 @@ export default function BankingBot({ onTransferComplete }) {
               </div>
             )}
           </div>
+
+          {loanOffer && !loading && (
+            <div className="chat-loan-offer" role="group" aria-label="Loan offer actions">
+              <p className="chat-loan-offer__text">
+                Loan needed: ${loanOffer.shortfall.toFixed(2)} for transfer of $
+                {loanOffer.transferAmount.toFixed(2)} to {loanOffer.receiverEmail}
+              </p>
+              <div className="chat-loan-offer__actions">
+                <button
+                  type="button"
+                  className="chat-loan-offer__btn chat-loan-offer__btn--accept"
+                  onClick={() => handleLoanDecision('accept')}
+                >
+                  Yes, accept loan
+                </button>
+                <button
+                  type="button"
+                  className="chat-loan-offer__btn chat-loan-offer__btn--reject"
+                  onClick={() => handleLoanDecision('reject')}
+                >
+                  No, cancel
+                </button>
+              </div>
+            </div>
+          )}
 
           <form className="chat-input-row" onSubmit={sendMessage}>
             <input

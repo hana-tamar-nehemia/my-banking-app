@@ -16,6 +16,7 @@ const STATUS = {
 export default function Verify() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  //token is the token from the email verification link 
   const token = searchParams.get('token');
 
   const [status, setStatus] = useState(token ? STATUS.VERIFYING : STATUS.MISSING);
@@ -24,6 +25,7 @@ export default function Verify() {
   const [resendMessage, setResendMessage] = useState('');
   const hasRun = useRef(false);
 
+  // get the email from localStorage after signup
   const email = localStorage.getItem('email');
 
   const handleResend = async () => {
@@ -58,11 +60,13 @@ export default function Verify() {
 
     const verifyToken = async () => {
       try {
+        //token is the token from the email verification link 
         const response = await axios.post(API_URL, { token });
 
         if (response.status === 200 && response.data.user) {
+          // token is the JWT token
           const { user, token: authToken } = response.data;
-
+          //JWT token is stored in localStorage
           if (authToken) {
             localStorage.setItem('token', authToken);
           }

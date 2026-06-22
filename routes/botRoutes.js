@@ -41,20 +41,22 @@ const router = express.Router();
  */
 router.post('/chat', protect, async (req, res) => {
   try {
-    const { message, history } = req.body;
+    const { message, history, loanDecision } = req.body;
     const userId = req.userId;
     const io = req.app.get('io');
 
-    const { reply, refreshDashboard } = await runBankingAssistant({
+    const { reply, refreshDashboard, loanOffer } = await runBankingAssistant({
       userId,
       message,
       history,
       io,
+      loanDecision,
     });
 
     res.status(200).json({
       reply,
       refreshDashboard,
+      ...(loanOffer ? { loanOffer } : {}),
     });
   } catch (err) {
     console.error('Bot chat error:', err);

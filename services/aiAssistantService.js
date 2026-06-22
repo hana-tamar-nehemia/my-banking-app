@@ -3,6 +3,8 @@ const {
   getRecentTransactions,
   transferMoney,
 } = require('./bankingOperations');
+const { getLoanSession, setLoanSession, clearLoanSession } = require('./loanSessionStore');
+const { parseLoanDecision, runTransferLoanGraph } = require('./transferLoanGraph');
 
 const SYSTEM_PROMPT = `You are a secure, professional AI banking assistant for a single authenticated customer.
 
@@ -18,6 +20,12 @@ CAPABILITIES:
 - get_user_balance: current balance
 - get_recent_transactions: recent activity
 - transfer_money: send money to another user by email
+
+LOAN FLOW (insufficient balance):
+- When transfer_money returns insufficientBalance with loanAvailable, explain how much is missing and offer an instant loan for exactly that shortfall to complete the transfer.
+- Ask the user to reply Yes to accept the loan or No to decline.
+- Do NOT call transfer_money again until the user explicitly accepts the loan.
+- If the user declines, confirm that nothing was changed on their account.
 
 Be concise, friendly, and accurate. Format currency as USD with two decimal places.`;
 
@@ -56,6 +64,18 @@ function historyToMessages(history, { HumanMessage, AIMessage }) {
       }
       return new HumanMessage(content);
     });
+}
+
+function buildLoanOfferPayload(session) {
+  return {
+    shortfall: session.shortfall,
+    transferAmount: session.amount,
+    receiverEmail: session.receiverEmail,
+  };
+}
+
+function buildLoanPrompt(session) {
+  return `Please confirm: would you like an instant loan of $${session.shortfall.toFixed(2)} to complete your $${session.amount.toFixed(2)} transfer to ${session.receiverEmail}? Reply Yes to accept or No to cancel.`;
 }
 
 function buildTools(userId, io, { tool, z }) {
@@ -99,6 +119,7 @@ function buildTools(userId, io, { tool, z }) {
       try {
         const result = await transferMoney(userId, receiverEmail, amount, io);
         transferCompleted = true;
+        clearLoanSession(userId);
         return JSON.stringify({
           success: true,
           message: result.message,
@@ -106,6 +127,30 @@ function buildTools(userId, io, { tool, z }) {
           transaction: result.transaction,
         });
       } catch (err) {
+        if (err.message === 'Insufficient balance') {
+          const profile = await getUserBalance(userId);
+          const numericAmount = Number(amount);
+          const shortfall = Math.max(0, numericAmount - profile.balance);
+
+          setLoanSession(userId, {
+            receiverEmail,
+            amount: numericAmount,
+            shortfall,
+            balance: profile.balance,
+          });
+
+          return JSON.stringify({
+            success: false,
+            insufficientBalance: true,
+            loanAvailable: true,
+            balance: profile.balance,
+            shortfall,
+            receiverEmail,
+            amount: numericAmount,
+            error: 'Insufficient balance',
+          });
+        }
+
         return JSON.stringify({
           success: false,
           error: err.message || 'Transfer failed',
@@ -155,18 +200,84 @@ function formatAssistantError(err) {
   return { status: 500, message: 'העוזר לא זמין כרגע. נסי שוב בעוד רגע.' };
 }
 
+function extractReply(lastMessage) {
+  if (typeof lastMessage?.content === 'string') {
+    return lastMessage.content;
+  }
+  if (Array.isArray(lastMessage?.content)) {
+    return lastMessage.content
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text)
+      .join('\n');
+  }
+  return 'I could not generate a response. Please try again.';
+}
+
+function normalizeLoanDecision(loanDecision) {
+  if (loanDecision === 'accept' || loanDecision === 'reject') {
+    return loanDecision;
+  }
+  return null;
+}
+
+async function handlePendingLoanDecision({
+  userId,
+  message,
+  loanDecision,
+  io,
+}) {
+  const session = getLoanSession(userId);
+  if (!session || session.status !== 'awaiting_loan_decision') {
+    return null;
+  }
+
+  const decision =
+    normalizeLoanDecision(loanDecision) || parseLoanDecision(message);
+
+  if (!decision) {
+    return {
+      reply: buildLoanPrompt(session),
+      loanOffer: buildLoanOfferPayload(session),
+      refreshDashboard: false,
+    };
+  }
+
+  return runTransferLoanGraph({
+    userId,
+    session,
+    decision,
+    io,
+  });
+}
+
 /**
  * Run the LangGraph ReAct agent for one user message.
- * @param {{ userId: string, message: string, history?: Array, io?: object }} params
+ * @param {{ userId: string, message: string, history?: Array, io?: object, loanDecision?: 'accept' | 'reject' }} params
  */
-async function runBankingAssistant({ userId, message, history = [], io = null }) {
+async function runBankingAssistant({
+  userId,
+  message,
+  history = [],
+  io = null,
+  loanDecision = null,
+}) {
   if (!process.env.GOOGLE_API_KEY) {
     throw new Error('GOOGLE_API_KEY is not configured on the server');
   }
 
   const trimmedMessage = message?.trim();
-  if (!trimmedMessage) {
+  if (!trimmedMessage && !normalizeLoanDecision(loanDecision)) {
     throw new Error('Message is required');
+  }
+
+  const pendingLoanResult = await handlePendingLoanDecision({
+    userId,
+    message: trimmedMessage || (loanDecision === 'accept' ? 'Yes' : 'No'),
+    loanDecision,
+    io,
+  });
+  if (pendingLoanResult) {
+    return pendingLoanResult;
   }
 
   const {
@@ -208,16 +319,16 @@ async function runBankingAssistant({ userId, message, history = [], io = null })
     throw error;
   }
 
-  const lastMessage = result.messages[result.messages.length - 1];
-  const reply =
-    typeof lastMessage?.content === 'string'
-      ? lastMessage.content
-      : Array.isArray(lastMessage?.content)
-        ? lastMessage.content
-            .filter((part) => part.type === 'text')
-            .map((part) => part.text)
-            .join('\n')
-        : 'I could not generate a response. Please try again.';
+  const reply = extractReply(result.messages[result.messages.length - 1]);
+  const session = getLoanSession(userId);
+
+  if (session?.status === 'awaiting_loan_decision') {
+    return {
+      reply,
+      loanOffer: buildLoanOfferPayload(session),
+      refreshDashboard: wasTransferCompleted(),
+    };
+  }
 
   return {
     reply,
@@ -228,4 +339,5 @@ async function runBankingAssistant({ userId, message, history = [], io = null })
 module.exports = {
   runBankingAssistant,
   SYSTEM_PROMPT,
+  parseLoanDecision,
 };

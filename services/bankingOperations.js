@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const Notification = require('../models/Notification');
@@ -51,6 +52,57 @@ async function getUserBalance(userId) {
   };
 }
 
+const MAX_LOAN_AMOUNT = 10000;
+
+/**
+ * Check whether the user can cover a transfer amount from their current balance.
+ */
+async function checkTransferFunds(userId, amount) {
+  const numericAmount = Number(amount);
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    throw new Error('Amount must be a positive number');
+  }
+
+  const profile = await getUserBalance(userId);
+  const shortfall = Math.max(0, numericAmount - profile.balance);
+
+  return {
+    ...profile,
+    amount: numericAmount,
+    shortfall,
+    sufficient: shortfall === 0,
+  };
+}
+
+/**
+ * Credit an instant loan to the authenticated user's balance (used by the AI assistant).
+ */
+async function issueLoan(userId, amount) {
+  const numericAmount = Number(amount);
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    throw new Error('Loan amount must be a positive number');
+  }
+  if (numericAmount > MAX_LOAN_AMOUNT) {
+    throw new Error(`Loan amount cannot exceed $${MAX_LOAN_AMOUNT.toFixed(2)}`);
+  }
+
+  const user = await User.findOneAndUpdate(
+    { _id: userId },
+    { $inc: { balance: numericAmount } },
+    { new: true }
+  );
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  return {
+    loanAmount: numericAmount,
+    balance: user.balance,
+    email: user.email,
+    username: user.username,
+  };
+}
+
 async function getRecentTransactions(userId, limit = 10, { withParties = false } = {}) {
   const transactions = await Transaction.find({
     $or: [{ sender: userId }, { receiver: userId }],
@@ -68,62 +120,101 @@ async function getRecentTransactions(userId, limit = 10, { withParties = false }
 
 /**
  * Shared transfer logic used by REST API and AI assistant tools.
+ * All balance, ledger, and notification writes run inside a MongoDB transaction.
  */
 async function transferMoney(fromUserId, receiverEmail, amount, io = null, reason = null) {
-  const sender = await User.findById(fromUserId);
-  if (!sender) {
-    throw new Error('Sender not found');
-  }
-
   const normalizedEmail = receiverEmail?.trim().toLowerCase();
-  const receiver = await User.findOne({ email: normalizedEmail });
-  if (!receiver) {
-    throw new Error('Receiver not found');
-  }
-
-  if (sender.email === normalizedEmail) {
-    throw new Error('Cannot transfer to your own account');
-  }
-
   const numericAmount = Number(amount);
+
   if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
     throw new Error('Amount must be a positive number');
   }
 
-  if (sender.balance < numericAmount) {
-    throw new Error('Insufficient balance');
-  }
-
-  sender.balance -= numericAmount;
-  receiver.balance += numericAmount;
-
-  await sender.save();
-  await receiver.save();
-
   const trimmedReason =
     typeof reason === 'string' && reason.trim() ? reason.trim() : null;
 
-  const transaction = await Transaction.create({
-    sender: sender._id,
-    receiver: receiver._id,
-    amount: numericAmount,
-    ...(trimmedReason ? { reason: trimmedReason } : {}),
-  });
+  const session = await mongoose.startSession();
+  let transferResult;
 
-  const populated = await Transaction.findById(transaction._id)
-    .populate('sender', 'email username')
-    .populate('receiver', 'email username');
+  try {
+    await session.withTransaction(async () => {
+      const sender = await User.findById(fromUserId).session(session);
+      if (!sender) {
+        throw new Error('Sender not found');
+      }
 
-  const notification = await Notification.create({
-    user: receiver._id,
-    type: 'transfer:received',
-    message: `You received $${numericAmount.toFixed(2)} from ${sender.email}`,
-    senderEmail: sender.email,
-    amount: numericAmount,
-  });
+      const receiver = await User.findOne({ email: normalizedEmail }).session(session);
+      if (!receiver) {
+        throw new Error('Receiver not found');
+      }
 
-  if (io) {
-    io.to(receiver._id.toString()).emit('transfer:received', {
+      if (sender._id.toString() === receiver._id.toString()) {
+        throw new Error('Cannot transfer to your own account');
+      }
+
+      const debitedSender = await User.findOneAndUpdate(
+        { _id: sender._id, balance: { $gte: numericAmount } },
+        { $inc: { balance: -numericAmount } },
+        { new: true, session }
+      );
+      if (!debitedSender) {
+        throw new Error('Insufficient balance');
+      }
+
+      const creditedReceiver = await User.findOneAndUpdate(
+        { _id: receiver._id },
+        { $inc: { balance: numericAmount } },
+        { new: true, session }
+      );
+      if (!creditedReceiver) {
+        throw new Error('Receiver not found');
+      }
+
+      const [transaction] = await Transaction.create(
+        [
+          {
+            sender: debitedSender._id,
+            receiver: creditedReceiver._id,
+            amount: numericAmount,
+            ...(trimmedReason ? { reason: trimmedReason } : {}),
+          },
+        ],
+        { session }
+      );
+
+      const [notification] = await Notification.create(
+        [
+          {
+            user: creditedReceiver._id,
+            type: 'transfer:received',
+            message: `You received $${numericAmount.toFixed(2)} from ${debitedSender.email}`,
+            senderEmail: debitedSender.email,
+            amount: numericAmount,
+          },
+        ],
+        { session }
+      );
+
+      const populated = await Transaction.findById(transaction._id)
+        .session(session)
+        .populate('sender', 'email username')
+        .populate('receiver', 'email username');
+
+      transferResult = {
+        message: 'Transaction successful',
+        transaction: formatTransactionWithParties(populated, fromUserId),
+        newBalance: debitedSender.balance,
+        notification,
+        receiverId: creditedReceiver._id,
+      };
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  if (io && transferResult?.notification) {
+    const { notification, receiverId } = transferResult;
+    io.to(receiverId.toString()).emit('transfer:received', {
       id: notification._id.toString(),
       type: notification.type,
       message: notification.message,
@@ -134,11 +225,8 @@ async function transferMoney(fromUserId, receiverEmail, amount, io = null, reaso
     });
   }
 
-  return {
-    message: 'Transaction successful',
-    transaction: formatTransactionWithParties(populated, fromUserId),
-    newBalance: sender.balance,
-  };
+  const { notification: _notification, receiverId: _receiverId, ...result } = transferResult;
+  return result;
 }
 
 module.exports = {
@@ -146,5 +234,8 @@ module.exports = {
   formatTransactionWithParties,
   getUserBalance,
   getRecentTransactions,
+  checkTransferFunds,
+  issueLoan,
   transferMoney,
+  MAX_LOAN_AMOUNT,
 };

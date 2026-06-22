@@ -47,6 +47,7 @@ export default function Landing() {
       });
 
       if (response.status === 200 && response.data.user) {
+        //JWT token is stored in localStorage
         const { user, token } = response.data;
         if (token) localStorage.setItem('token', token);
         localStorage.setItem(
@@ -88,6 +89,7 @@ export default function Landing() {
         { timeout: 25000 }
       );
 
+      //email is stored in localStorage
       if (response.status === 201) {
         localStorage.setItem('email', email.trim().toLowerCase());
         navigate('/verify');

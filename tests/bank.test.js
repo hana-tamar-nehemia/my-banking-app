@@ -1,3 +1,14 @@
+jest.mock('mongoose', () => {
+  const actual = jest.requireActual('mongoose');
+  return {
+    ...actual,
+    startSession: jest.fn().mockResolvedValue({
+      withTransaction: jest.fn((fn) => fn()),
+      endSession: jest.fn().mockResolvedValue(undefined),
+    }),
+  };
+});
+
 jest.mock('../models/User');
 jest.mock('../models/Transaction');
 jest.mock('../models/Notification');
@@ -21,13 +32,27 @@ function authHeader(userId = senderId) {
   return { Authorization: `Bearer ${token}` };
 }
 
+function chainableQuery(result) {
+  const query = {
+    session: jest.fn(function session() {
+      return this;
+    }),
+    populate: jest.fn(function populate() {
+      return this;
+    }),
+    then(onFulfilled, onRejected) {
+      return Promise.resolve(result).then(onFulfilled, onRejected);
+    },
+  };
+  return query;
+}
+
 function buildSender(balance) {
   return {
     _id: senderId,
     email: 'sender@example.com',
     username: 'sender_user',
     balance,
-    save: jest.fn().mockResolvedValue(true),
   };
 }
 
@@ -37,44 +62,43 @@ function buildReceiver() {
     email: 'receiver@example.com',
     username: 'receiver_user',
     balance: 500,
-    save: jest.fn().mockResolvedValue(true),
   };
 }
 
 function mockPopulatedTransaction({ amount, reason }) {
   const createdAt = new Date('2024-06-01T12:00:00.000Z');
 
-  Transaction.create.mockResolvedValue({ _id: transactionId });
-  Transaction.findById.mockReturnValue({
-    populate: jest.fn().mockReturnValue({
-      populate: jest.fn().mockResolvedValue({
-        _id: transactionId,
-        sender: {
-          _id: senderId,
-          email: 'sender@example.com',
-          username: 'sender_user',
-        },
-        receiver: {
-          _id: receiverId,
-          email: 'receiver@example.com',
-          username: 'receiver_user',
-        },
-        amount,
-        reason: reason ?? null,
-        createdAt,
-      }),
-    }),
-  });
+  Transaction.create.mockResolvedValue([{ _id: transactionId }]);
+  Transaction.findById.mockReturnValue(
+    chainableQuery({
+      _id: transactionId,
+      sender: {
+        _id: senderId,
+        email: 'sender@example.com',
+        username: 'sender_user',
+      },
+      receiver: {
+        _id: receiverId,
+        email: 'receiver@example.com',
+        username: 'receiver_user',
+      },
+      amount,
+      reason: reason ?? null,
+      createdAt,
+    })
+  );
 
-  Notification.create.mockResolvedValue({
-    _id: '507f1f77bcf86cd799439014',
-    type: 'transfer:received',
-    message: `You received $${amount.toFixed(2)} from sender@example.com`,
-    senderEmail: 'sender@example.com',
-    amount,
-    read: false,
-    createdAt,
-  });
+  Notification.create.mockResolvedValue([
+    {
+      _id: '507f1f77bcf86cd799439014',
+      type: 'transfer:received',
+      message: `You received $${amount.toFixed(2)} from sender@example.com`,
+      senderEmail: 'sender@example.com',
+      amount,
+      read: false,
+      createdAt,
+    },
+  ]);
 }
 
 describe('POST /api/bank/transaction', () => {
@@ -90,8 +114,11 @@ describe('POST /api/bank/transaction', () => {
     const sender = buildSender(1000);
     const receiver = buildReceiver();
 
-    User.findById.mockResolvedValue(sender);
-    User.findOne.mockResolvedValue(receiver);
+    User.findById.mockReturnValue(chainableQuery(sender));
+    User.findOne.mockReturnValue(chainableQuery(receiver));
+    User.findOneAndUpdate
+      .mockResolvedValueOnce({ ...sender, balance: 900 })
+      .mockResolvedValueOnce({ ...receiver, balance: 600 });
     mockPopulatedTransaction({ amount: 100, reason: 'Monthly rent' });
 
     const response = await request(app)
@@ -115,24 +142,39 @@ describe('POST /api/bank/transaction', () => {
       counterpartyEmail: 'receiver@example.com',
       counterpartyUsername: 'receiver_user',
     });
-    expect(sender.balance).toBe(900);
-    expect(receiver.balance).toBe(600);
-    expect(sender.save).toHaveBeenCalled();
-    expect(receiver.save).toHaveBeenCalled();
-    expect(Transaction.create).toHaveBeenCalledWith({
-      sender: senderId,
-      receiver: receiverId,
-      amount: 100,
-      reason: 'Monthly rent',
-    });
+    expect(User.findOneAndUpdate).toHaveBeenCalledTimes(2);
+    expect(User.findOneAndUpdate).toHaveBeenNthCalledWith(
+      1,
+      { _id: senderId, balance: { $gte: 100 } },
+      { $inc: { balance: -100 } },
+      expect.objectContaining({ new: true, session: expect.any(Object) })
+    );
+    expect(User.findOneAndUpdate).toHaveBeenNthCalledWith(
+      2,
+      { _id: receiverId },
+      { $inc: { balance: 100 } },
+      expect.objectContaining({ new: true, session: expect.any(Object) })
+    );
+    expect(Transaction.create).toHaveBeenCalledWith(
+      [
+        {
+          sender: senderId,
+          receiver: receiverId,
+          amount: 100,
+          reason: 'Monthly rent',
+        },
+      ],
+      expect.objectContaining({ session: expect.any(Object) })
+    );
   });
 
   it('returns 400 when the sender has insufficient balance', async () => {
     const sender = buildSender(50);
     const receiver = buildReceiver();
 
-    User.findById.mockResolvedValue(sender);
-    User.findOne.mockResolvedValue(receiver);
+    User.findById.mockReturnValue(chainableQuery(sender));
+    User.findOne.mockReturnValue(chainableQuery(receiver));
+    User.findOneAndUpdate.mockResolvedValueOnce(null);
 
     const response = await request(app)
       .post(TRANSACTION_URL)
@@ -145,8 +187,7 @@ describe('POST /api/bank/transaction', () => {
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ error: 'Insufficient balance' });
-    expect(sender.save).not.toHaveBeenCalled();
-    expect(receiver.save).not.toHaveBeenCalled();
+    expect(User.findOneAndUpdate).toHaveBeenCalledTimes(1);
     expect(Transaction.create).not.toHaveBeenCalled();
   });
 });

@@ -1008,6 +1008,47 @@ input {
   cursor: not-allowed;
 }
 
+.chat-loan-offer {
+  margin: 0 0.75rem 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(15, 23, 42, 0.03);
+}
+
+.chat-loan-offer__text {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.chat-loan-offer__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.chat-loan-offer__btn {
+  flex: 1;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.chat-loan-offer__btn--accept {
+  color: var(--white);
+  background: var(--text-primary);
+}
+
+.chat-loan-offer__btn--reject {
+  color: var(--text-primary);
+  background: var(--white);
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
 @media (max-width: 480px) {
   .chat-panel {
     right: 1rem;
